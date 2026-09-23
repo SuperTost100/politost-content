@@ -17,7 +17,13 @@ export function renderDisplayTex(tex: string): string {
 
 /** Render a numbered formula's display LaTeX to HTML */
 export function renderFormulaLatex(latex: string): string {
-  return renderDisplayTex(extractDisplayTex(latex));
+  const tex = extractDisplayTex(latex).trim();
+  // ponytail: long \text{...} prose in display math won't wrap in KaTeX — emit plain HTML
+  const prose = tex.match(/^\\text\{([\s\S]*)\}$/);
+  if (prose) {
+    return `<p class="formula-prose">${escapeHtml(prose[1])}</p>`;
+  }
+  return renderDisplayTex(tex);
 }
 
 export type FormulaRenderVariant = 'screen' | 'print';

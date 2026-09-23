@@ -47,4 +47,13 @@ describe('parseInlineSegments spacing', () => {
     assert.match(html, /class="mrel"/);
     assert.match(html, /opposta direzione se/);
   });
+
+  it('keeps a parenthesis inside \\\\(...\\\\)', async () => {
+    const { renderLatexInText } = await import('../src/renderContent.ts');
+    const html = renderLatexInText('\\(f(x)\\)');
+    assert.match(html, /katex/);
+    assert.doesNotMatch(html, /\\\(f/);
+    assert.match(html, />f</);
+    assert.match(html, />x</);
+  });
 });

@@ -1,6 +1,11 @@
 {
   "name": "@politost/content-core",
   "version": "0.1.0",
+  "license": "AGPL-3.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SuperTost100/politost-content-core.git"
+  },
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
@@ -9,7 +14,7 @@
     "test": "tsx --test tests/*.test.ts"
   },
   "dependencies": {
-    "dompurify": "^3.2.6",
+    "dompurify": "^3.4.11",
     "katex": "^0.17.0"
   },
   "devDependencies": {
@@ -17,10 +22,5 @@
     "jsdom": "^29.1.1",
     "tsx": "^4.22.4",
     "typescript": "~6.0.2"
-  },
-  "license": "AGPL-3.0",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/SuperTost100/politost-content-core.git"
   }
 }

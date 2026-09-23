@@ -16,7 +16,7 @@ function extractMathSlots(text: string): { text: string; slots: MathSlot[] } {
 
   const withSlots = text
     .replace(/\\\[\s*([\s\S]*?)\s*\\\]/g, (_, tex) => mark(tex.trim(), true))
-    .replace(/\\\(([^)]+)\\\)/g, (_, tex) => mark(tex.trim(), false))
+    .replace(/\\\(\s*([\s\S]*?)\s*\\\)/g, (_, tex) => mark(tex.trim(), false))
     .replace(/\$\$([\s\S]*?)\$\$/g, (_, tex) => mark(tex.trim(), true))
     .replace(/\$([^$\n]+)\$/g, (_, tex) => mark(tex.trim(), false));
 

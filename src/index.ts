@@ -16,6 +16,7 @@ export {
   processImageBlocks,
   extractImageRefs,
   hasExternalImageMarkdown,
+  countOrphanFormulaLines,
   parseChapterMarkdown,
   parseExercises,
   buildFormulaIndex,
@@ -59,4 +60,13 @@ export { validateChapter, validateBundle } from './validateChapter';
 export type {
   ChapterValidationResult,
   BundleValidationResult,
+  ValidateProfile,
+  ValidateChapterOptions,
+  BundleValidateOptions,
 } from './validateChapter';
+
+export { validateExercises } from './validateExercises';
+export type { ExerciseValidationResult } from './validateExercises';
+
+export { serializeChapter } from './serializeChapter';
+export { parseChapterFrontmatter, withChapterFrontmatter } from './chapterFrontmatter';

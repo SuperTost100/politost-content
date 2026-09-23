@@ -1,11 +1,30 @@
 import type { Chapter, Exercise, FormulaRef, Paragraph } from './types/smartbook';
 
-const FORMULA_BLOCK = /:::formula\{id="([^"]+)"\s+label="([^"]+)"\}\n([\s\S]*?):::/g;
-const IMAGE_BLOCK = /:::image\{([^}]+)\}\s*\n?:::/g;
+/** id and label, either order. Shared with validateChapter's formulaOpenRe. */
+export const CANONICAL_FORMULA_OPEN =
+  /^:::formula\{(?:id="[^"]+"\s+label="[^"]+"|label="[^"]+"\s+id="[^"]+")\}/;
+const FORMULA_BLOCK = /:::formula\{([^\n}]*)\}\n([\s\S]*?)^:::$/gm;
+
+/** Lines starting with :::formula{ that are not a canonical opening tag. */
+export function countOrphanFormulaLines(raw: string): number {
+  let n = 0;
+  for (const line of raw.split('\n')) {
+    if (line.startsWith(':::formula{') && !CANONICAL_FORMULA_OPEN.test(line)) n++;
+  }
+  return n;
+}
+/** Inside `{...}` / JSON: a `}` inside double quotes stays in the value. */
+const IMAGE_QUOTED_BRACE_RE = /(?:[^}"\\]|\\.|"(?:[^"\\]|\\.)*")*/;
+export const IMAGE_QUOTED_BRACE = IMAGE_QUOTED_BRACE_RE.source;
+const IMAGE_BLOCK = new RegExp(
+  `:::image\\{(${IMAGE_QUOTED_BRACE})\\}\\s*\\n?:::`,
+  'g',
+);
+const IMAGE_MARKER = new RegExp(`<!--IMAGE:(\\{${IMAGE_QUOTED_BRACE}\\})-->`, 'g');
 const EXERCISE_OPEN = /:::exercise\{([^}]+)\}\n/g;
 const BLOCK_OPEN = /^(exercise|hint|solution)(\{|\s)/;
 const PARA_HEADER = /^## (p\d+) \| (.+)$/gm;
-const EXTERNAL_IMAGE_MD = /!\[[^\]]*\]\((?:https?:\/\/|data:|\/\/)/;
+const MARKDOWN_IMAGE = /!\[[^\]]*\]\([^)]*\)/;
 
 export interface ImageRef {
   src: string;
@@ -26,9 +45,9 @@ function imageMarker(ref: ImageRef): string {
 }
 
 export function processImageBlocks(content: string): string {
-  return content.replace(IMAGE_BLOCK, (_, attrs) => {
+  return content.replace(IMAGE_BLOCK, (full, attrs: string) => {
     const ref = parseImageAttrs(attrs);
-    return ref ? imageMarker(ref) : '';
+    return ref ? imageMarker(ref) : full;
   });
 }
 
@@ -38,7 +57,7 @@ export function extractImageRefs(content: string): ImageRef[] {
     const ref = parseImageAttrs(match[1]);
     if (ref) refs.push(ref);
   }
-  for (const match of content.matchAll(/<!--IMAGE:({[^}]+})-->/g)) {
+  for (const match of content.matchAll(IMAGE_MARKER)) {
     try {
       const parsed = JSON.parse(match[1]) as ImageRef;
       if (parsed.src && parsed.alt) refs.push(parsed);
@@ -48,7 +67,15 @@ export function extractImageRefs(content: string): ImageRef[] {
 }
 
 export function hasExternalImageMarkdown(content: string): boolean {
-  return EXTERNAL_IMAGE_MD.test(content);
+  return MARKDOWN_IMAGE.test(content);
+}
+
+function readFormulaAttrs(attrs: string): { id: string; label: string } | null {
+  if (!CANONICAL_FORMULA_OPEN.test(`:::formula{${attrs}}`)) return null;
+  const id = /\bid="([^"]+)"/.exec(attrs)?.[1];
+  const label = /\blabel="([^"]+)"/.exec(attrs)?.[1];
+  if (!id || !label) return null;
+  return { id, label };
 }
 
 export function parseChapterMarkdown(raw: string, chapterNumber: number): Chapter {
@@ -57,12 +84,19 @@ export function parseChapterMarkdown(raw: string, chapterNumber: number): Chapte
 
   const body = raw.replace(/^---[\s\S]*?---\n*/, '');
 
-  let formulaContent = body
-    .replace(FORMULA_BLOCK, (_, id, label, latex) => {
-      const [ch, num] = id.split('.').map(Number);
-      formulas.push({ id, chapter: ch, number: num, label, latex: latex.trim() });
-      return `<!--FORMULA:${id}-->`;
+  let formulaContent = body.replace(FORMULA_BLOCK, (full, attrs: string, latex: string) => {
+    const parsed = readFormulaAttrs(attrs);
+    if (!parsed) return full;
+    const [ch, num] = parsed.id.split('.').map(Number);
+    formulas.push({
+      id: parsed.id,
+      chapter: ch,
+      number: num,
+      label: parsed.label,
+      latex: latex.trim(),
     });
+    return `<!--FORMULA:${parsed.id}-->`;
+  });
   formulaContent = processImageBlocks(formulaContent);
 
   const headers = [...body.matchAll(PARA_HEADER)];
@@ -72,18 +106,39 @@ export function parseChapterMarkdown(raw: string, chapterNumber: number): Chapte
     paragraphs.push({
       id: match[1],
       title: match[2],
-      content: parts[i]?.trim() ?? '',
+      content: withoutLeadingTitle(parts[i] ?? '', match[2]),
     });
   });
+
+  const warnings: string[] = [];
+  const orphanFormulas = countOrphanFormulaLines(body);
+  if (orphanFormulas > 0) {
+    warnings.push(
+      `${orphanFormulas} riga/e :::formula non canoniche — usa :::formula{id="X.Y" label="…"}\\n$$…$$\\n:::`,
+    );
+  }
 
   return {
     meta: { id: '', number: chapterNumber, title: '', file: '', printable: true },
     paragraphs,
     formulas,
+    warnings: warnings.length ? warnings : undefined,
   };
 }
 
-/** Trova la chiusura `:::` bilanciando blocchi annidati (hint, solution) */
+function withoutLeadingTitle(part: string, title: string): string {
+  const trimmed = part.trim();
+  const nl = trimmed.indexOf('\n');
+  const first = (nl === -1 ? trimmed : trimmed.slice(0, nl)).replace(/\r$/, '');
+  if (first !== title) return trimmed;
+  return (nl === -1 ? '' : trimmed.slice(nl + 1)).trim();
+}
+
+function atLineStart(raw: string, idx: number): boolean {
+  return idx === 0 || raw[idx - 1] === '\n';
+}
+
+/** Trova la chiusura `:::` bilanciando solo fence a inizio riga (hint, solution). */
 function findBlockClose(raw: string, bodyStart: number): number {
   let depth = 1;
   let pos = bodyStart;
@@ -91,6 +146,10 @@ function findBlockClose(raw: string, bodyStart: number): number {
   while (pos < raw.length) {
     const idx = raw.indexOf(':::', pos);
     if (idx === -1) return -1;
+    if (!atLineStart(raw, idx)) {
+      pos = idx + 3;
+      continue;
+    }
 
     const after = raw.slice(idx + 3);
     if (BLOCK_OPEN.test(after)) {
@@ -107,6 +166,21 @@ function findBlockClose(raw: string, bodyStart: number): number {
   return -1;
 }
 
+function readFence(
+  body: string,
+  name: 'hint' | 'solution',
+): { text: string; start: number; end: number } | null {
+  const re = new RegExp(`^:::${name}(?:\\{[^\\n]*\\})?[ \\t]*$`, 'm');
+  const match = re.exec(body);
+  if (!match) return null;
+  let contentStart = match.index + match[0].length;
+  if (body[contentStart] === '\n') contentStart += 1;
+  const closeIdx = findBlockClose(body, contentStart);
+  const end = closeIdx === -1 ? body.length : closeIdx + 3;
+  const text = body.slice(contentStart, closeIdx === -1 ? body.length : closeIdx).trim();
+  return { text, start: match.index, end };
+}
+
 export function parseExercises(raw: string, defaultType: 'esercizio' | 'esame' = 'esercizio'): Exercise[] {
   const body = raw.replace(/^---[\s\S]*?---\n*/, '');
   const exercises: Exercise[] = [];
@@ -117,34 +191,32 @@ export function parseExercises(raw: string, defaultType: 'esercizio' | 'esame' =
     const attrs = match[1];
     const bodyStart = match.index + match[0].length;
     const closeIdx = findBlockClose(body, bodyStart);
-    if (closeIdx === -1) continue;
-
-    const exerciseBody = body.slice(bodyStart, closeIdx).trim();
+    const exerciseBody = (closeIdx === -1 ? body.slice(bodyStart) : body.slice(bodyStart, closeIdx)).trim();
 
     const id = attrs.match(/id="([^"]+)"/)?.[1] ?? '';
     const chapter = attrs.match(/chapter="(\d+)"/)?.[1];
     const difficulty = attrs.match(/difficulty="([^"]+)"/)?.[1] as Exercise['difficulty'];
     const type = attrs.match(/type="([^"]+)"/)?.[1] as 'esercizio' | 'esame' | undefined;
 
-    const hintMatch = exerciseBody.match(/:::hint\n([\s\S]*?):::/);
-    const solutionMatch = exerciseBody.match(/:::solution\n([\s\S]*?):::/);
-    const question = exerciseBody
-      .replace(/:::hint\n[\s\S]*?:::/g, '')
-      .replace(/:::solution\n[\s\S]*?:::/g, '')
-      .replace(/^## Domanda\n/, '')
-      .trim();
+    const hint = readFence(exerciseBody, 'hint');
+    const solution = readFence(exerciseBody, 'solution');
+    let question = exerciseBody;
+    for (const span of [hint, solution].filter((s) => s !== null).sort((a, b) => b.start - a.start)) {
+      question = question.slice(0, span.start) + question.slice(span.end);
+    }
+    question = question.replace(/^## Domanda\n/, '').trim();
 
     exercises.push({
       id,
       chapter: chapter ? Number(chapter) : undefined,
       type: type ?? defaultType,
       question,
-      hint: hintMatch?.[1].trim(),
-      solution: solutionMatch?.[1].trim(),
+      hint: hint?.text,
+      solution: solution?.text,
       difficulty,
     });
 
-    openRe.lastIndex = closeIdx + 3;
+    openRe.lastIndex = closeIdx === -1 ? body.length : closeIdx + 3;
   }
 
   return exercises;

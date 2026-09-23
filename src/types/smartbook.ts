@@ -46,6 +46,8 @@ export interface Chapter {
   meta: ChapterMeta;
   paragraphs: Paragraph[];
   formulas: FormulaRef[];
+  /** Non-fatal parse issues (e.g. orphan :::formula lines). */
+  warnings?: string[];
 }
 
 export interface Exercise {
