@@ -10,23 +10,25 @@ from pathlib import Path
 from typing import Literal
 
 from ptsb_pack.crypto import build_encrypted_container
-from ptsb_pack.validate import SKIP_FILES, load_smartbook_config
+from ptsb_pack.validate import allowed_bundle_files, load_smartbook_config
 
 Access = Literal["public", "licensed"]
 
 
-def _collect_files(bundle_dir: Path) -> dict[str, bytes]:
-    files: dict[str, bytes] = {}
-    for path in sorted(bundle_dir.rglob("*")):
-        if not path.is_file() or path.name in SKIP_FILES:
-            continue
-        rel = str(path.relative_to(bundle_dir)).replace("\\", "/")
-        files[rel] = path.read_bytes()
-    return files
+def _read_member(bundle_dir: Path, rel: str) -> bytes:
+    path = bundle_dir / rel
+    if path.is_symlink():
+        raise ValueError(f"symlink non consentito: {rel}")
+    resolved = path.resolve()
+    root = bundle_dir.resolve()
+    if not resolved.is_relative_to(root):
+        raise ValueError(f"percorso fuori dal bundle: {rel}")
+    return resolved.read_bytes()
 
 
 def build_inner_zip(bundle_dir: Path, *, access: Access) -> bytes:
     config = load_smartbook_config(bundle_dir)
+    packed_config = {**config, "access": access}
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         ptsb_manifest = {
@@ -38,10 +40,11 @@ def build_inner_zip(bundle_dir: Path, *, access: Access) -> bytes:
             "producer": "ptsb-pack/1.0",
         }
         zf.writestr("ptsb.json", json.dumps(ptsb_manifest, indent=2))
-        for rel, data in _collect_files(bundle_dir).items():
-            if rel == "ptsb.json":
+        zf.writestr("smartbook.json", json.dumps(packed_config, ensure_ascii=False, indent=2))
+        for rel in allowed_bundle_files(bundle_dir):
+            if rel == "smartbook.json":
                 continue
-            zf.writestr(rel, data)
+            zf.writestr(rel, _read_member(bundle_dir, rel))
     return buf.getvalue()
 
 

@@ -43,15 +43,13 @@ def unwrap_cek(master_secret: str, wrap_iv: bytes, wrapped: bytes, book_id: str)
     return AESGCM(key).decrypt(wrap_iv, wrapped, None)
 
 
-def encrypt_zip(zip_bytes: bytes, cek: bytes, iv_b64: str | None = None) -> tuple[bytes, str]:
-    iv = base64.b64decode(iv_b64) if iv_b64 else os.urandom(12)
-    ciphertext = AESGCM(cek).encrypt(iv, zip_bytes, None)
-    return ciphertext, base64.b64encode(iv).decode("ascii")
+def encrypt_zip(zip_bytes: bytes, cek: bytes, iv: bytes, aad: bytes) -> bytes:
+    return AESGCM(cek).encrypt(iv, zip_bytes, aad)
 
 
-def decrypt_zip(ciphertext: bytes, cek: bytes, iv_b64: str) -> bytes:
+def decrypt_zip(ciphertext: bytes, cek: bytes, iv_b64: str, aad: bytes) -> bytes:
     iv = base64.b64decode(iv_b64)
-    return AESGCM(cek).decrypt(iv, ciphertext, None)
+    return AESGCM(cek).decrypt(iv, ciphertext, aad)
 
 
 def build_encrypted_container(
@@ -61,14 +59,14 @@ def build_encrypted_container(
     master_secret: str,
 ) -> bytes:
     cek = os.urandom(32)
-    ciphertext, iv_b64 = encrypt_zip(zip_bytes, cek)
+    iv = os.urandom(12)
     book_id = header.get("id")
     if not book_id or not isinstance(book_id, str):
         raise ValueError("Header PTSB richiede campo id per la cifratura CEK")
     wrap_iv_b64, wrapped_key_b64 = wrap_cek(master_secret, cek, book_id)
     header = {
         **header,
-        "iv": iv_b64,
+        "iv": base64.b64encode(iv).decode("ascii"),
         "wrapIv": wrap_iv_b64,
         "wrappedKey": wrapped_key_b64,
         "encrypted": True,
@@ -79,15 +77,16 @@ def build_encrypted_container(
     flags = FLAG_ENCRYPTED
     if header.get("access") == "licensed":
         flags |= 0x02
-    return (
-        MAGIC
-        + struct.pack(">BBH", FORMAT_VERSION, flags, len(header_json))
-        + header_json
-        + ciphertext
-    )
+    # The bytes before the ciphertext are the AES-GCM associated data, so a
+    # flipped access field fails the tag. Old containers were packed with no
+    # AAD and will not open until they are packed again.
+    prefix = MAGIC + struct.pack(">BBH", FORMAT_VERSION, flags, len(header_json))
+    aad = prefix + header_json
+    ciphertext = encrypt_zip(zip_bytes, cek, iv, aad)
+    return aad + ciphertext
 
 
-def parse_encrypted_container(data: bytes) -> tuple[dict[str, Any], bytes]:
+def parse_encrypted_container(data: bytes) -> tuple[dict[str, Any], bytes, bytes]:
     if len(data) < 8 or data[:4] != MAGIC:
         raise ValueError("File PTSB non valido")
     version, flags, header_len = struct.unpack(">BBH", data[4:8])
@@ -96,12 +95,15 @@ def parse_encrypted_container(data: bytes) -> tuple[dict[str, Any], bytes]:
     if not (flags & FLAG_ENCRYPTED):
         raise ValueError("Container non cifrato")
     header_end = 8 + header_len
+    if header_end > len(data):
+        raise ValueError("Header PTSB troncato")
+    header_bytes = data[:header_end]
     header = json.loads(data[8:header_end].decode("utf-8"))
-    return header, data[header_end:]
+    return header, data[header_end:], header_bytes
 
 
 def unwrap_and_decrypt(data: bytes, master_secret: str) -> bytes:
-    header, ciphertext = parse_encrypted_container(data)
+    header, ciphertext, header_bytes = parse_encrypted_container(data)
     wrap_iv_b64 = header.get("wrapIv")
     wrapped_key_b64 = header.get("wrappedKey")
     iv = header.get("iv")
@@ -113,4 +115,4 @@ def unwrap_and_decrypt(data: bytes, master_secret: str) -> bytes:
     if not book_id or not isinstance(book_id, str):
         raise ValueError("Header PTSB richiede campo id")
     cek = unwrap_cek(master_secret, wrap_iv, wrapped, book_id)
-    return decrypt_zip(ciphertext, cek, iv)
+    return decrypt_zip(ciphertext, cek, iv, header_bytes)

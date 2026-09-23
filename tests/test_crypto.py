@@ -39,3 +39,25 @@ def test_per_book_wrap_keys_are_isolated(master_secret: str) -> None:
 
     with pytest.raises(Exception):
         unwrap_cek(master_secret, iv_b, key_b, "book-a")
+
+
+def test_truncated_header_raises() -> None:
+    from ptsb_pack.crypto import parse_encrypted_container
+
+    data = b"PTSB" + bytes([1, 1, 0xFF, 0xF0]) + b'{"id":"x"}'
+    with pytest.raises(ValueError, match="troncato"):
+        parse_encrypted_container(data)
+
+
+def test_header_is_authenticated(master_secret: str) -> None:
+    from ptsb_pack.crypto import build_encrypted_container, unwrap_and_decrypt
+
+    blob = build_encrypted_container(
+        b"PK\x03\x04zip",
+        header={"id": "book-a", "title": "A", "access": "licensed"},
+        master_secret=master_secret,
+    )
+    assert unwrap_and_decrypt(blob, master_secret) == b"PK\x03\x04zip"
+    flipped = blob.replace(b"licensed", b"publicxx")
+    with pytest.raises(Exception):
+        unwrap_and_decrypt(flipped, master_secret)

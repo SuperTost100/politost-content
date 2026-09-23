@@ -40,7 +40,7 @@ def _inspect_plain_zip(data: bytes) -> dict[str, Any]:
 
 
 def _inspect_encrypted(data: bytes) -> dict[str, Any]:
-    header, _ = parse_encrypted_container(data)
+    header, _, _ = parse_encrypted_container(data)
     return {
         "type": "encrypted",
         "encrypted": True,
