@@ -21,11 +21,13 @@ def _write_bundle(
     chapter_md: str,
     assets: dict[str, bytes] | None = None,
     extras: dict[str, str] | None = None,
+    meta: dict | None = None,
 ) -> None:
     config = {
         "id": "test-book",
         "title": "Test",
         "chapters": [{"file": "ch01.md", "number": 1}],
+        **(meta or {}),
     }
     (bundle_dir / "chapters").mkdir(parents=True, exist_ok=True)
     (bundle_dir / "smartbook.json").write_text(json.dumps(config), encoding="utf-8")
@@ -142,3 +144,24 @@ def test_pack_writes_access_into_smartbook_json(tmp_path: Path) -> None:
     assert packed["access"] == "licensed"
     assert manifest["access"] == "licensed"
     assert "access" not in json.loads((bundle / "smartbook.json").read_text(encoding="utf-8"))
+
+
+def test_accepts_book_metadata(tmp_path: Path) -> None:
+    meta = {"authors": ["Ada Rossi"], "version": "1.2.0", "specVersion": "1.1"}
+    _write_bundle(tmp_path, chapter_md="## p1 | Intro\n\nTesto.\n", meta=meta)
+    assert load_smartbook_config(tmp_path)["authors"] == ["Ada Rossi"]
+
+
+@pytest.mark.parametrize(
+    ("meta", "pattern"),
+    [
+        ({"authors": "Ada Rossi"}, "authors deve essere una lista"),
+        ({"authors": ["Ada", " "]}, "ogni voce di authors"),
+        ({"version": 2}, "version deve essere"),
+        ({"specVersion": "1"}, "specVersion deve avere"),
+    ],
+)
+def test_rejects_bad_book_metadata(tmp_path: Path, meta: dict, pattern: str) -> None:
+    _write_bundle(tmp_path, chapter_md="## p1 | Intro\n\nTesto.\n", meta=meta)
+    with pytest.raises(ValueError, match=pattern):
+        load_smartbook_config(tmp_path)

@@ -35,6 +35,10 @@ def _inspect_plain_zip(data: bytes) -> dict[str, Any]:
             "access": ptsb.get("access", smartbook.get("access", "public")),
             "id": smartbook.get("id"),
             "title": smartbook.get("title"),
+            "authors": smartbook.get("authors"),
+            "version": smartbook.get("version"),
+            "specVersion": smartbook.get("specVersion", "1.0"),
+            "formatVersion": ptsb.get("formatVersion"),
             "files": names,
         }
 

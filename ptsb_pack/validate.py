@@ -15,6 +15,7 @@ IMAGE_BLOCK = re.compile(r":::image\{([^}]+)\}")
 IMAGE_SRC = re.compile(r'src="([^"]+)"')
 GRAFICO_TYPES = {"function", "plotly"}
 IDE_FIELDS = ("id", "title", "language", "code")
+SPEC_VERSION_RE = re.compile(r"^\d+\.\d+$")
 
 
 def _inside(root: Path, path: Path, label: str) -> Path:
@@ -51,6 +52,24 @@ def _check_json_extra(name: str, data: object) -> None:
         for i, item in enumerate(data):
             if not isinstance(item, dict) or any(not item.get(field) for field in IDE_FIELDS):
                 raise ValueError(f"ide.json[{i}]: snippet non valido")
+
+
+def _check_book_meta(config: dict) -> None:
+    """Optional metadata from content format 1.1. Same rules as validateBookMeta in content-core."""
+    if "authors" in config:
+        authors = config["authors"]
+        if not isinstance(authors, list) or not authors:
+            raise ValueError("smartbook.json: authors deve essere una lista non vuota di nomi")
+        if any(not isinstance(a, str) or not a.strip() for a in authors):
+            raise ValueError("smartbook.json: ogni voce di authors deve essere un nome non vuoto")
+    if "version" in config:
+        version = config["version"]
+        if not isinstance(version, str) or not version.strip():
+            raise ValueError("smartbook.json: version deve essere una stringa non vuota")
+    if "specVersion" in config:
+        spec = config["specVersion"]
+        if not isinstance(spec, str) or not SPEC_VERSION_RE.match(spec):
+            raise ValueError('smartbook.json: specVersion deve avere la forma MAJOR.MINOR, es. "1.1"')
 
 
 def _markdown_files(bundle_dir: Path, chapters: list[dict]) -> list[Path]:
@@ -105,6 +124,7 @@ def load_smartbook_config(bundle_dir: Path) -> dict:
     chapters = config.get("chapters", [])
     if not chapters:
         raise ValueError("Nessun capitolo in smartbook.json")
+    _check_book_meta(config)
     chapters_dir = bundle_dir / "chapters"
     if not chapters_dir.is_dir():
         raise ValueError("Cartella chapters/ mancante")
