@@ -71,6 +71,9 @@ Vedi `politost-smartbook/src/content/esempio/` — libro dimostrativo integrato 
   "title": "Guida di esempio",
   "subject": "Esempio",
   "access": "public",
+  "authors": ["Ada Rossi", "Luca Bianchi"],
+  "version": "1.2.0",
+  "specVersion": "1.1",
   "sections": {
     "smartbook":  { "enabled": true, "label": "Capitoli" },
     "formulario": { "enabled": true, "label": "Formulario" },
@@ -98,9 +101,23 @@ Vedi `politost-smartbook/src/content/esempio/` — libro dimostrativo integrato 
 | `title` | Titolo in header e catalogo |
 | `subject` | Badge materia in home |
 | `access` | `public` (default) o `licensed` — vedi [ptsb.md](ptsb.md) |
+| `authors` | Opzionale. Lista di nomi, nell'ordine in cui vanno mostrati. Se presente non può essere vuota |
+| `version` | Opzionale. Versione del contenuto del libro, decisa dagli autori. Consigliato semver (`1.2.0`), altrimenti il validatore dà un avviso |
+| `specVersion` | Opzionale. Versione di questo formato per cui il libro è scritto, forma `MAJOR.MINOR`. Se manca vale `1.0`. Un lettore che trova una versione più nuova della sua mostra un avviso e prova comunque ad aprire il libro |
 | `chapters[].id` | Slug capitolo: `/capitolo/<id>` |
 | `chapters[].number` | Numero per formule `(N.M)` |
 | `chapters[].printable` | Abilita versione stampabile |
+
+### Versioni
+
+Questo documento descrive il formato **1.1** (file `CONTENT_FORMAT_VERSION`).
+
+| Versione | Cambiamenti |
+|----------|-------------|
+| 1.1 | Campi opzionali `authors`, `version`, `specVersion` in `smartbook.json`. Un libro 1.0 resta valido senza modifiche |
+| 1.0 | Prima versione stabile |
+
+Il formato del contenuto e il formato del pacchetto sono separati. `specVersion` riguarda i file di questo documento. `formatVersion` in `ptsb.json` riguarda il contenitore `.ptsb` (vedi [ptsb.md](ptsb.md)).
 
 ---
 
