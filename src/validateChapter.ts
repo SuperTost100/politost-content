@@ -10,6 +10,7 @@ import {
   hasExternalImageMarkdown,
   parseChapterMarkdown,
 } from './parser';
+import { validateBookMeta, type BookMeta } from './bookMeta';
 
 const IMAGE_BLOCK = new RegExp(`:::image\\{(${IMAGE_QUOTED_BRACE})\\}`, 'g');
 const REF_LINK = /\[([^\]]+)\]\(ref:(formula\/[\d.]+|chapter\/(\d+)#(p\d+))\)/g;
@@ -297,7 +298,7 @@ export interface BundleValidationResult {
 }
 
 export function validateBundle(
-  config: { id: string; chapters: { file: string; number: number }[] },
+  config: { id: string; chapters: { file: string; number: number }[] } & BookMeta,
   chapterFiles: Record<string, string>,
   assets: Record<string, Uint8Array> = {},
   extras: {
@@ -322,6 +323,10 @@ export function validateBundle(
   if (!config.chapters?.length) {
     errors.push('Nessun capitolo in smartbook.json');
   }
+
+  const meta = validateBookMeta(config);
+  errors.push(...meta.errors);
+  warnings.push(...meta.warnings);
 
   const bookFormulaIndex = buildFormulaIndex(
     (config.chapters ?? []).flatMap((ch) => {

@@ -8,6 +8,12 @@ export interface SmartbookConfig {
   title: string;
   subject: string;
   access?: 'public' | 'licensed';
+  /** People credited for the book, in display order. Optional, spec 1.1. */
+  authors?: string[];
+  /** Version of this book's content, chosen by its authors. Semver recommended. Optional, spec 1.1. */
+  version?: string;
+  /** Content-format version the book was written for, "MAJOR.MINOR". Missing means "1.0". Optional, spec 1.1. */
+  specVersion?: string;
   sections: {
     smartbook: SectionConfig;
     formulario: SectionConfig;

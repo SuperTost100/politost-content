@@ -70,3 +70,16 @@ export type { ExerciseValidationResult } from './validateExercises';
 
 export { serializeChapter } from './serializeChapter';
 export { parseChapterFrontmatter, withChapterFrontmatter } from './chapterFrontmatter';
+
+export {
+  PTSB_ZIP_LIMITS,
+  ptsbKind,
+  safeUnzip,
+  parsePtsbEntries,
+  readPtsb,
+  readPtsbManifest,
+} from './ptsb';
+export type { ZipLimits, PtsbManifest, PtsbBundle, PtsbKind } from './ptsb';
+
+export { CONTENT_FORMAT_VERSION, validateBookMeta, compareSpecVersions } from './bookMeta';
+export type { BookMeta } from './bookMeta';

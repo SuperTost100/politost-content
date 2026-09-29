@@ -1,7 +1,7 @@
 {
   "name": "@politost/content-core",
-  "version": "0.1.0",
-  "license": "AGPL-3.0",
+  "version": "0.2.0",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/SuperTost100/politost-content-core.git"
@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "dompurify": "^3.4.11",
+    "fflate": "^0.8.3",
     "katex": "^0.17.0"
   },
   "devDependencies": {
