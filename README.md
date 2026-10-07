@@ -2,7 +2,7 @@
 
 CLI Python per validare, impacchettare e ispezionare file **`.ptsb`**.
 
-Spec: [politost-content-format](https://github.com/SuperTost100/politost-content-format) · Dettaglio binario: [docs/ptsb.md](https://github.com/SuperTost100/politost-smartbook-monorepo/blob/main/docs/ptsb.md)
+Spec: [politost-content-format](https://github.com/SuperTost100/politost-content-format) · Dettaglio binario: [docs/ptsb.md](https://github.com/SuperTost100/politost-smartbook/blob/main/docs/ptsb.md)
 
 ## Installazione
 
@@ -27,5 +27,5 @@ ptsb-pack inspect libro.ptsb
 | Componente | Uso |
 |------------|-----|
 | [politost-smartbook](https://github.com/SuperTost100/politost-smartbook) | `npm run pack:ptsb` |
-| [politost-builder](https://github.com/SuperTost100/politost-builder) | `POST /api/projects/{id}/export-ptsb` |
+| [Smart Builder](https://github.com/SuperTost100/politost-smartbook-builder) | Export `.ptsb` dall’app corrente (privata) |
 | Platform API | CEK unwrap per `.ptsb` cifrati |
