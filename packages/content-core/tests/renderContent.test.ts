@@ -159,6 +159,36 @@ describe('parseContentBlocks', () => {
     assert.deepEqual(blocks.map((b) => b.type), ['quote', 'p']);
   });
 
+  it('keeps LaTeX and refs in a code block exactly as written', async () => {
+    const { parseContentBlocks } = await load();
+    const source = 'Esempio $\\alpha$ e \\(x\\), poi [[hover:1.2]] e [[link:ref:chapter/1#p2|qui $y$]].';
+    const blocks = parseContentBlocks(`\`\`\`latex\n${source}\n\\[ y = 1 \\]\n\`\`\``);
+    assert.deepEqual(blocks, [{ type: 'code', text: `${source}\n\\[ y = 1 \\]` }]);
+  });
+
+  it('does not let $$ pair across a code fence', async () => {
+    const { parseContentBlocks } = await load();
+    const blocks = parseContentBlocks('Costo $$ alto.\n\n```\nprint("$$")\n```\n\nFine.');
+    assert.deepEqual(blocks.map((b) => b.type), ['p', 'code', 'p']);
+    assert.deepEqual(ofType(blocks, 'code')[0], { type: 'code', text: 'print("$$")' });
+  });
+
+  it('keeps math in inline code as source and still renders math outside it', async () => {
+    const { parseInlineSegments } = await load();
+    const html = textOf(parseInlineSegments('Scrivi `$\\frac{a}{b}$` per ottenere $\\frac{a}{b}$, o `[[hover:1.1]]`.'));
+    assert.match(html, /<code>\$\\frac\{a\}\{b\}\$<\/code>/);
+    assert.match(html, /<code>\[\[hover:1\.1\]\]<\/code>/);
+    assert.match(html, /class="katex"/);
+  });
+
+  it('keeps math inside a link label', async () => {
+    const { parseInlineSegments } = await load();
+    const segments = parseInlineSegments('Vedi [[link:ref:formula/1.1|la $x^2$]] e $y$.');
+    const link = segments.find((s) => s.type === 'link');
+    assert.ok(link && 'children' in link);
+    assert.match(textOf(link.children), /class="katex"/);
+  });
+
   it('does not make a heading out of text followed by ---', async () => {
     const { parseContentBlocks } = await load();
     const blocks = parseContentBlocks('Testo\n---');

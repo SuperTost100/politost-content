@@ -8,38 +8,66 @@ const MATH_SLOT_RE = new RegExp(`${MATH_SLOT}(\\d+)${MATH_SLOT}`, 'g');
 const REF_SPLIT_RE = new RegExp(`(${REF_SLOT}\\d+${REF_SLOT})`);
 const REF_ONE_RE = new RegExp(`^${REF_SLOT}(\\d+)${REF_SLOT}$`);
 
-type MathSlot = { tex: string; display: boolean };
-type RefSlot = { kind: 'hover'; formulaId: string } | { kind: 'link'; ref: string; label: string };
+/** `source` is the original text, put back verbatim inside code */
+type MathSlot = { tex: string; display: boolean; source: string };
+type RefSlot = { source: string } & (
+  | { kind: 'hover'; formulaId: string }
+  | { kind: 'link'; ref: string; label: string }
+);
 
 /** Pull $...$ / $$...$$ / \\(\\) / \\[\\] out before markdown so `_`, `*` and `<` stay LaTeX */
-function extractMathSlots(text: string): { text: string; slots: MathSlot[] } {
-  const slots: MathSlot[] = [];
-  const mark = (tex: string, display: boolean) => {
+function extractMathSlots(text: string, slots: MathSlot[] = []): { text: string; slots: MathSlot[] } {
+  const mark = (source: string, tex: string, display: boolean) => {
     const id = slots.length;
-    slots.push({ tex, display });
+    slots.push({ tex: tex.trim(), display, source: restoreSlotSource(source, slots, []) });
     return `${MATH_SLOT}${id}${MATH_SLOT}`;
   };
 
   const withSlots = text
-    .replace(/\\\[\s*([\s\S]*?)\s*\\\]/g, (_, tex) => mark(tex.trim(), true))
-    .replace(/\\\(\s*([\s\S]*?)\s*\\\)/g, (_, tex) => mark(tex.trim(), false))
-    .replace(/\$\$([\s\S]*?)\$\$/g, (_, tex) => mark(tex.trim(), true))
-    .replace(/\$([^$\n]+)\$/g, (_, tex) => mark(tex.trim(), false));
+    .replace(/\\\[\s*([\s\S]*?)\s*\\\]/g, (m, tex) => mark(m, tex, true))
+    .replace(/\\\(\s*([\s\S]*?)\s*\\\)/g, (m, tex) => mark(m, tex, false))
+    .replace(/\$\$([\s\S]*?)\$\$/g, (m, tex) => mark(m, tex, true))
+    .replace(/\$([^$\n]+)\$/g, (m, tex) => mark(m, tex, false));
 
   return { text: withSlots, slots };
 }
 
 /** [[hover:1.2]] and [[link:ref|label]] become opaque slots so markdown cannot split them */
-function extractRefSlots(text: string): { text: string; slots: RefSlot[] } {
-  const slots: RefSlot[] = [];
+function extractRefSlots(text: string, math: MathSlot[], slots: RefSlot[] = []): { text: string; slots: RefSlot[] } {
   const withSlots = text.replace(
     /\[\[hover:([\d.]+)\]\]|\[\[link:([^|\]]+)\|([^\]]+)\]\]/g,
-    (_, formulaId: string | undefined, ref: string | undefined, label: string | undefined) => {
-      slots.push(formulaId ? { kind: 'hover', formulaId } : { kind: 'link', ref: ref!, label: label! });
+    (source: string, formulaId: string | undefined, ref: string | undefined, label: string | undefined) => {
+      source = restoreSlotSource(source, math, []);
+      slots.push(formulaId ? { kind: 'hover', formulaId, source } : { kind: 'link', ref: ref!, label: label!, source });
       return `${REF_SLOT}${slots.length - 1}${REF_SLOT}`;
     },
   );
   return { text: withSlots, slots };
+}
+
+/** Fenced code blocks and inline code spans, which keep `$`, `\\(` and `[[…]]` as written */
+const CODE_RE = /^[ \t]*(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:^[ \t]*\1[`~]*[ \t]*$|(?![\s\S]))|(`+)(?!`)[^\n]*?[^`\n]\2(?!`)/gm;
+
+/** Math and ref slots for markdown text, leaving code untouched */
+function extractSlots(text: string): { text: string; ctx: SlotContext } {
+  const ctx: SlotContext = { math: [], refs: [] };
+  const slotProse = (prose: string) =>
+    extractRefSlots(extractMathSlots(prose, ctx.math).text, ctx.math, ctx.refs).text;
+
+  let out = '';
+  let last = 0;
+  for (const code of text.matchAll(CODE_RE)) {
+    out += slotProse(text.slice(last, code.index)) + code[0];
+    last = code.index + code[0].length;
+  }
+  return { text: out + slotProse(text.slice(last)), ctx };
+}
+
+/** Put the original text back for any slot markdown-it still placed inside code */
+function restoreSlotSource(text: string, math: MathSlot[], refs: RefSlot[]): string {
+  return text
+    .replace(MATH_SLOT_RE, (_, i) => math[Number(i)]?.source ?? '')
+    .replace(new RegExp(`${REF_SLOT}(\\d+)${REF_SLOT}`, 'g'), (_, i) => refs[Number(i)]?.source ?? '');
 }
 
 function renderMathSlot({ tex, display }: MathSlot): string {
@@ -85,13 +113,6 @@ const SAFE_HREF_RE = /^(https?:|mailto:)/i;
 interface SlotContext {
   math: MathSlot[];
   refs: RefSlot[];
-}
-
-function restoreMathSource(text: string, ctx: SlotContext): string {
-  return text.replace(MATH_SLOT_RE, (_, idx) => {
-    const slot = ctx.math[Number(idx)];
-    return slot.display ? `$$${slot.tex}$$` : `$${slot.tex}$`;
-  });
 }
 
 function textToHtml(text: string, ctx: SlotContext): string {
@@ -141,7 +162,7 @@ function inlineFromTokens(children: Token[], ctx: SlotContext): InlineSegment[] 
         pushText(token.content);
         break;
       case 'code_inline':
-        pushHtml(`<code>${escapeHtml(restoreMathSource(token.content, ctx))}</code>`);
+        pushHtml(`<code>${escapeHtml(restoreSlotSource(token.content, ctx.math, ctx.refs))}</code>`);
         break;
       case 'softbreak':
         pushHtml('\n');
@@ -191,9 +212,8 @@ function parseInlineSlotted(text: string, ctx: SlotContext): InlineSegment[] {
 
 /** Inline markdown (bold, italic, code, math, hovers, links) as a segment tree */
 export function parseInlineSegments(text: string): InlineSegment[] {
-  const { text: mathSlotted, slots: math } = extractMathSlots(text);
-  const { text: slotted, slots: refs } = extractRefSlots(mathSlotted);
-  return parseInlineSlotted(slotted, { math, refs });
+  const { text: slotted, ctx } = extractSlots(text);
+  return parseInlineSlotted(slotted, ctx);
 }
 
 /** Serialize segments to static HTML (hovers become "(1.2)", links keep their label) */
@@ -230,9 +250,7 @@ function displayMathOnly(inline: Token | undefined, ctx: SlotContext): string | 
 }
 
 function blocksFromMarkdown(text: string): ContentBlock[] {
-  const { text: mathSlotted, slots: math } = extractMathSlots(text);
-  const { text: slotted, slots: refs } = extractRefSlots(mathSlotted);
-  const ctx: SlotContext = { math, refs };
+  const { text: slotted, ctx } = extractSlots(text);
   const tokens = md.parse(slotted, {});
 
   const root: ContentBlock[] = [];
@@ -296,7 +314,7 @@ function blocksFromMarkdown(text: string): ContentBlock[] {
         containers.pop();
         break;
       case 'fence':
-        current().push({ type: 'code', text: restoreMathSource(token.content.replace(/\n$/, ''), ctx) });
+        current().push({ type: 'code', text: restoreSlotSource(token.content.replace(/\n$/, ''), ctx.math, ctx.refs) });
         break;
       case 'hr':
         current().push({ type: 'hr' });
