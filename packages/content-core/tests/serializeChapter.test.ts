@@ -36,3 +36,9 @@ title: T
   const out = serializeChapter(parsed, 'T', 1);
   assert.match(out, /alt="caption with \} brace"/);
 });
+
+test('serializeChapter keeps $$ in display formulas', () => {
+  const raw = '## p1 | Uno\n\nTesto.\n\n:::formula{id="1.1" label="Vel"}\n$$v = \\frac{s}{t}$$\n:::\n';
+  const out = serializeChapter(parseChapterMarkdown(raw, 1), 'T', 1);
+  assert.ok(out.includes('$$v = \\frac{s}{t}$$'), out);
+});

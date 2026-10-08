@@ -94,6 +94,21 @@ $$
     const ch = parseChapterMarkdown(raw, 1);
     assert.ok(ch.warnings?.some((w) => w.includes('non canoniche')));
   });
+  it('reads CRLF files like LF files', () => {
+    const lf = '---\nchapter: 1\ntitle: T\n---\n\n## p1 | Uno\n\nA\n\n:::formula{id="1.1" label="L"}\n$$x$$\n:::\n';
+    const crlf = parseChapterMarkdown(lf.replace(/\n/g, '\r\n'), 1);
+    assert.deepEqual(crlf, parseChapterMarkdown(lf, 1));
+    assert.equal(crlf.formulas.length, 1);
+  });
+
+  it('keeps text before the first paragraph in p1 and warns', () => {
+    const ch = parseChapterMarkdown('Intro.\n\n## p1 | Uno\n\nA\n\n## p2 | Due\n\nB\n', 1);
+    assert.deepEqual(
+      ch.paragraphs.map((p) => [p.id, p.content]),
+      [['p1', 'Intro.\n\nA'], ['p2', 'B']],
+    );
+    assert.ok(ch.warnings?.some((w) => w.includes('Testo prima di ## p1')));
+  });
 });
 
 describe('preprocessContent', () => {
@@ -146,6 +161,14 @@ Never closed exercise body
     assert.equal(parsed[0].solution, '4');
     const both = parseExercises(`${hintWithFence}\n${unclosed}`);
     assert.deepEqual(both.map((e) => e.id), ['H06-a', 'H06-b']);
+  });
+});
+
+describe('parseExercises CRLF', () => {
+  it('reads exercise blocks with CRLF line endings', () => {
+    const raw = '---\ntype: esercizi\n---\n\n:::exercise{id="E1.1"}\nQ\n:::hint\nH\n:::\n:::solution\nS\n:::\n:::\n';
+    const [ex] = parseExercises(raw.replace(/\n/g, '\r\n'));
+    assert.deepEqual([ex.id, ex.question, ex.hint, ex.solution], ['E1.1', 'Q', 'H', 'S']);
   });
 });
 

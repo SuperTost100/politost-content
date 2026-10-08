@@ -1,3 +1,5 @@
+import { normalizeNewlines } from './parser';
+
 const FRONTMATTER = /^---\s*\nchapter:\s*(\d+)\s*\ntitle:\s*(.+?)\s*\n---\s*\n?/;
 
 export function parseChapterFrontmatter(raw: string): {
@@ -5,6 +7,7 @@ export function parseChapterFrontmatter(raw: string): {
   title: string;
   body: string;
 } {
+  raw = normalizeNewlines(raw);
   const m = raw.match(FRONTMATTER);
   if (!m) {
     throw new Error('Frontmatter mancante — atteso blocco --- con chapter e title');

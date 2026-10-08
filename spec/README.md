@@ -18,6 +18,6 @@ Canonical specification for Politost Smartbook markdown, `smartbook.json`, exerc
 | [politost-smartbook](https://github.com/SuperTost100/politost-smartbook) | OSS reader |
 | [`packages/content-core`](../packages/content-core) | Parser, renderer, validator |
 | [`packages/ptsb-pack`](../packages/ptsb-pack) | `.ptsb` pack CLI |
-| [politost-smartbook-builder](https://github.com/SuperTost100/politost-smartbook-builder) | Current authoring app (private) |
+| [politost-smartbook-builder](https://github.com/SuperTost100/politost-smartbook-builder) | Authoring app |
 
 Syntax changes need a version bump in `VERSION` and in `CONTENT_FORMAT_VERSION` (content-core's tests fail if the two differ), then updates in the reader and the builder.

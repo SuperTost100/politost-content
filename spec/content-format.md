@@ -194,7 +194,7 @@ $$v = \frac{s}{t}$$
 Come nella {{formula:2.1}}, si ottiene…
 ```
 
-Spazi prima e dopo `{{formula:X.Y}}`.
+Spazi prima e dopo `{{formula:X.Y}}`. La formula può stare in un altro capitolo del libro.
 
 ### Link interni
 
@@ -333,6 +333,8 @@ Il validatore è `validateChapter` / `validateBundle` in content-core (`packages
 - capitoli elencati in `smartbook.json` ma assenti, `id` non valido, metadati 1.1 con forma sbagliata;
 - **markup del generatore** in un capitolo, in `esercizi.md` o in `esami.md`: tag rimasti dall'output di un modello, come `</markdown>`, `</invoke>`, `<parameter name="…">`, `<function_calls>`, `antml:*`, `tool_use`, `tool_result`. È un errore in tutti i profili (`dev` e `ship`). Chi produce i file deve toglierli prima di esportare.
 
+Danno un avviso, in entrambi i profili: testo prima del primo `## pN |` (il parser lo mette in p1), link `ref:chapter/N#pM` verso un paragrafo che non esiste, `sections` incompleto, e negli esercizi `chapter` sconosciuto, riferimenti senza destinazione e LaTeX non valido. Codice inline e blocchi di codice sono esclusi dai controlli su `**` e LaTeX.
+
 Il profilo `dev` riporta come avvisi molti controlli che `ship` tratta come errori. Il markup del generatore è un errore in entrambi. L'elenco completo è nei test di content-core.
 
 `ptsb-pack validate` e `ptsb-pack pack` rifiutano lo stesso markup del generatore e le immagini mancanti. Il builder invoca il validatore di content-core dopo la generazione.
@@ -345,6 +347,7 @@ Il profilo `dev` riporta come avvisi molti controlli che `ship` tratta come erro
 - Paragrafi: `p1`, `p2`, … senza salti logici
 - Esercizi: `E<cap>.<n>`; esami: `X<anno>-<n>`
 - Delimitatori `:::` su righe dedicate
+- Fine riga LF. CRLF (Windows) è accettato
 - Una riga vuota tra paragrafi di testo
 
 ---

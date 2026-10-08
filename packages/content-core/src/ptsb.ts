@@ -191,7 +191,10 @@ export function parsePtsbEntries(entries: Record<string, Uint8Array>): PtsbBundl
     throw new Error('smartbook.json mancante nel pacchetto');
   }
   const config = parseJson<SmartbookConfig>(entries['smartbook.json'], 'smartbook.json');
-  if (!ID_RE.test(config.id)) {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) {
+    throw new Error('smartbook.json: atteso un oggetto JSON');
+  }
+  if (typeof config.id !== 'string' || !ID_RE.test(config.id)) {
     throw new Error(`ID smartbook non valido: ${config.id}`);
   }
 

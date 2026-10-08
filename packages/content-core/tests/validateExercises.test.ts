@@ -72,4 +72,9 @@ Q?
     assert.equal(r.valid, false);
     assert.match(r.errors.join('\n'), /impossibile/);
   });
+
+  it('finds type anywhere in the frontmatter', () => {
+    const raw = '---\nprintable: true\ntype: esercizi\n---\n\n:::exercise{id="E1.1"}\nQ\n:::hint\nH\n:::\n:::solution\nS\n:::\n:::\n';
+    assert.deepEqual(validateExercises(raw, 'esercizi').errors, []);
+  });
 });

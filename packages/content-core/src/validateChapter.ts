@@ -8,8 +8,11 @@ import {
   buildFormulaIndex,
   extractImageRefs,
   hasExternalImageMarkdown,
+  normalizeNewlines,
   parseChapterMarkdown,
+  parseExercises,
 } from './parser';
+import { blankCode } from './renderContent';
 import { validateBookMeta, type BookMeta } from './bookMeta';
 
 const IMAGE_BLOCK = new RegExp(`:::image\\{(${IMAGE_QUOTED_BRACE})\\}`, 'g');
@@ -32,8 +35,10 @@ export interface ValidateChapterOptions {
   strict?: boolean;
   /** When set, :::image src must exist in this set (assets/… paths). */
   availableAssets?: Set<string>;
-  /** Whole-book ids from buildFormulaIndex. A ref:formula/ hit in this map is not missing. */
+  /** Whole-book ids from buildFormulaIndex. A hover or ref:formula/ hit in this map is not missing. */
   bookFormulaIndex?: Map<string, FormulaRef>;
+  /** Paragraph ids by chapter number, to check ref:chapter/N#pM links to other chapters. */
+  bookParagraphs?: Map<number, Set<string>>;
 }
 
 export interface BundleValidateOptions {
@@ -69,10 +74,12 @@ function validateImagesInContent(
   strict: boolean,
   availableAssets?: Set<string>,
 ): void {
-  if (hasExternalImageMarkdown(content)) {
+  if (hasExternalImageMarkdown(blankCode(content))) {
     errors.push(`${context}: immagini markdown non consentite — usa un blocco :::image`);
   }
 
+  // extractImageRefs sees the blocks again, so collect first and report each path once.
+  const missing = new Set<string>();
   for (const match of content.matchAll(IMAGE_BLOCK)) {
     const attrs = match[1];
     const src = attrs.match(/src="([^"]+)"/)?.[1];
@@ -87,25 +94,14 @@ function validateImagesInContent(
     if (!isValidAssetPath(src)) {
       errors.push(`${context}: percorso immagine non valido "${src}" — usa assets/nome.ext`);
     }
-    if (availableAssets && !availableAssets.has(src)) {
-      pushFinding(
-        errors,
-        warnings,
-        `${context}: asset mancante "${src}"`,
-        strict,
-      );
-    }
+    if (availableAssets && !availableAssets.has(src)) missing.add(src);
   }
 
   for (const ref of extractImageRefs(content)) {
-    if (availableAssets && !availableAssets.has(ref.src)) {
-      pushFinding(
-        errors,
-        warnings,
-        `${context}: asset mancante "${ref.src}"`,
-        strict,
-      );
-    }
+    if (availableAssets && !availableAssets.has(ref.src)) missing.add(ref.src);
+  }
+  for (const src of missing) {
+    pushFinding(errors, warnings, `${context}: asset mancante "${src}"`, strict);
   }
 }
 
@@ -153,7 +149,8 @@ function validateContentQuality(
   }
 }
 
-function validateLatex(latex: string, context: string, errors: string[]): void {
+/** `findings` is the errors list, or the warnings list where invalid LaTeX must not block a book. */
+function validateLatex(latex: string, context: string, findings: string[]): void {
   const blocks = [...latex.matchAll(/\$\$([\s\S]*?)\$\$/g)].map((m) => m[1].trim());
   const inlines = [...latex.matchAll(/(?<!\$)\$([^$\n]+)\$/g)].map((m) => m[1].trim());
 
@@ -161,14 +158,14 @@ function validateLatex(latex: string, context: string, errors: string[]): void {
     try {
       katex.renderToString(block, { throwOnError: true, displayMode: true });
     } catch (e) {
-      errors.push(`${context}: LaTeX display invalido — ${(e as Error).message}`);
+      findings.push(`${context}: LaTeX display invalido — ${(e as Error).message}`);
     }
   }
   for (const inline of inlines) {
     try {
       katex.renderToString(inline, { throwOnError: true, displayMode: false });
     } catch (e) {
-      errors.push(`${context}: LaTeX inline invalido — ${(e as Error).message}`);
+      findings.push(`${context}: LaTeX inline invalido — ${(e as Error).message}`);
     }
   }
 }
@@ -193,6 +190,7 @@ export function validateChapter(
   const warnings: string[] = [];
   const strict = shipMode(options);
   const availableAssets = options?.availableAssets;
+  raw = normalizeNewlines(raw);
 
   const parsed = parseChapterMarkdown(raw, chapterNumber);
   if (parsed.warnings?.length) warnings.push(...parsed.warnings);
@@ -210,12 +208,11 @@ export function validateChapter(
     if (!/^p\d+$/.test(p.id)) {
       errors.push(`ID paragrafo non valido: ${p.id}`);
     }
-    validateLatex(p.content, `Paragrafo ${p.id}`, errors);
-    validateImagesInContent(p.content, `Paragrafo ${p.id}`, errors, warnings, strict, availableAssets);
+    validateLatex(blankCode(p.content), `Paragrafo ${p.id}`, errors);
   }
 
   validateImagesInContent(raw, 'Capitolo', errors, warnings, strict, availableAssets);
-  validateContentQuality(raw, errors, warnings, strict);
+  validateContentQuality(blankCode(raw), errors, warnings, strict);
   validateNoToolMarkup(raw, 'Capitolo', errors);
 
   const formulaOpenRe = new RegExp(CANONICAL_FORMULA_OPEN.source, 'gm');
@@ -254,23 +251,25 @@ export function validateChapter(
     validateLatex(f.latex, `Formula ${f.id}`, errors);
   }
 
+  const knownFormula = (id: string) => formulaIds.has(id) || options?.bookFormulaIndex?.has(id) === true;
   for (const p of parsed.paragraphs) {
-    for (const m of p.content.matchAll(HOVER_REF)) {
+    const content = blankCode(p.content);
+    for (const m of content.matchAll(HOVER_REF)) {
       const id = m[1];
-      if (!formulaIds.has(id)) {
+      if (!knownFormula(id)) {
         pushFinding(
           errors,
           warnings,
-          `Paragrafo ${p.id}: riferimento hover {{formula:${id}}} non trovato nel capitolo`,
+          `Paragrafo ${p.id}: riferimento hover {{formula:${id}}} non trovato`,
           strict,
         );
       }
     }
-    for (const m of p.content.matchAll(REF_LINK)) {
+    for (const m of content.matchAll(REF_LINK)) {
       const ref = m[2];
       if (ref.startsWith('formula/')) {
         const id = ref.replace('formula/', '');
-        if (!formulaIds.has(id) && !options?.bookFormulaIndex?.has(id)) {
+        if (!knownFormula(id)) {
           pushFinding(
             errors,
             warnings,
@@ -281,7 +280,8 @@ export function validateChapter(
       } else if (ref.startsWith('chapter/')) {
         const chNum = Number(m[3]);
         const paraId = m[4];
-        if (chNum === chapterNumber && !paraIds.has(paraId)) {
+        const target = chNum === chapterNumber ? paraIds : options?.bookParagraphs?.get(chNum);
+        if ((chNum === chapterNumber || options?.bookParagraphs) && !target?.has(paraId)) {
           warnings.push(`Paragrafo ${p.id}: link ref:${ref} — paragrafo ${paraId} assente`);
         }
       }
@@ -301,6 +301,73 @@ export function validateChapter(
 }
 
 const ID_RE = /^[a-z0-9-]+$/;
+const SECTION_KEYS = ['smartbook', 'formulario', 'esercizi', 'esami', 'ide', 'grafici', 'risposte'];
+
+type BundleChapter = { id?: unknown; file: string; number: number };
+
+/** Broken chapter entries are errors. Missing sections are warnings: Pyxis and others open books without them. */
+function validateConfigShape(
+  config: { sections?: unknown },
+  chapters: BundleChapter[],
+  errors: string[],
+  warnings: string[],
+): void {
+  const seen: Record<'id' | 'number' | 'file', Set<unknown>> = { id: new Set(), number: new Set(), file: new Set() };
+  for (const [i, ch] of chapters.entries()) {
+    if (!ch || typeof ch !== 'object') {
+      errors.push(`smartbook.json: chapters[${i}] non è un oggetto`);
+      continue;
+    }
+    if (typeof ch.file !== 'string' || !ch.file) {
+      errors.push(`smartbook.json: chapters[${i}] senza file`);
+    }
+    if (!Number.isInteger(ch.number) || ch.number < 1) {
+      errors.push(`smartbook.json: chapters[${i}].number deve essere un intero positivo, trovato ${JSON.stringify(ch.number)}`);
+    }
+    for (const key of ['id', 'number', 'file'] as const) {
+      if (ch[key] === undefined) continue;
+      if (seen[key].has(ch[key])) errors.push(`smartbook.json: ${key} ripetuto in chapters: ${String(ch[key])}`);
+      seen[key].add(ch[key]);
+    }
+  }
+
+  const sections = config.sections;
+  const missing = SECTION_KEYS.filter((key) => {
+    const entry = sections && typeof sections === 'object' ? (sections as Record<string, unknown>)[key] : undefined;
+    const e = entry as { enabled?: unknown; label?: unknown } | undefined;
+    return !e || typeof e.enabled !== 'boolean' || typeof e.label !== 'string';
+  });
+  if (missing.length) {
+    warnings.push(`smartbook.json: sections senza { enabled, label } per ${missing.join(', ')}`);
+  }
+}
+
+/** Refs, chapter numbers and LaTeX in esercizi.md / esami.md. Warnings only, so existing books still open. */
+function validateExerciseRefs(
+  raw: string,
+  name: string,
+  bookParagraphs: Map<number, Set<string>>,
+  bookFormulaIndex: Map<string, FormulaRef>,
+  warnings: string[],
+): void {
+  for (const ex of parseExercises(raw)) {
+    const context = `${name}: ${ex.id || 'exercise'}`;
+    if (ex.chapter !== undefined && !bookParagraphs.has(ex.chapter)) {
+      warnings.push(`${context}: chapter="${ex.chapter}" non è un capitolo del libro`);
+    }
+    const text = blankCode([ex.question, ex.hint ?? '', ex.solution ?? ''].join('\n\n'));
+    for (const m of text.matchAll(HOVER_REF)) {
+      if (!bookFormulaIndex.has(m[1])) warnings.push(`${context}: riferimento hover {{formula:${m[1]}}} non trovato`);
+    }
+    for (const m of text.matchAll(REF_LINK)) {
+      const found = m[3] === undefined
+        ? bookFormulaIndex.has(m[2].replace('formula/', ''))
+        : bookParagraphs.get(Number(m[3]))?.has(m[4]) === true;
+      if (!found) warnings.push(`${context}: link ref:${m[2]} senza destinazione`);
+    }
+    validateLatex(text, context, warnings);
+  }
+}
 
 export interface BundleValidationResult {
   valid: boolean;
@@ -309,7 +376,7 @@ export interface BundleValidationResult {
 }
 
 export function validateBundle(
-  config: { id: string; chapters: { file: string; number: number }[] } & BookMeta,
+  config: { id: string; chapters: BundleChapter[]; sections?: unknown } & BookMeta,
   chapterFiles: Record<string, string>,
   assets: Record<string, Uint8Array> = {},
   extras: {
@@ -331,22 +398,25 @@ export function validateBundle(
     errors.push(`id smartbook non valido: ${config.id}`);
   }
 
-  if (!config.chapters?.length) {
+  const chapters = Array.isArray(config.chapters) ? config.chapters : [];
+  if (!chapters.length) {
     errors.push('Nessun capitolo in smartbook.json');
   }
+  validateConfigShape(config, chapters, errors, warnings);
 
   const meta = validateBookMeta(config);
   errors.push(...meta.errors);
   warnings.push(...meta.warnings);
 
-  const bookFormulaIndex = buildFormulaIndex(
-    (config.chapters ?? []).flatMap((ch) => {
-      const raw = chapterFiles[ch.file];
-      return raw === undefined ? [] : [parseChapterMarkdown(raw, ch.number)];
-    }),
-  );
+  const parsedChapters = chapters.flatMap((ch) => {
+    const raw = ch && chapterFiles[ch.file];
+    return raw === undefined ? [] : [parseChapterMarkdown(raw, ch.number)];
+  });
+  const bookFormulaIndex = buildFormulaIndex(parsedChapters);
+  const bookParagraphs = new Map(parsedChapters.map((c) => [c.meta.number, new Set(c.paragraphs.map((p) => p.id))]));
 
-  for (const ch of config.chapters ?? []) {
+  for (const ch of chapters) {
+    if (!ch || typeof ch !== 'object') continue;
     const raw = chapterFiles[ch.file];
     if (raw === undefined) {
       errors.push(`File capitolo mancante: ${ch.file}`);
@@ -356,6 +426,7 @@ export function validateBundle(
       profile: strict ? 'ship' : 'dev',
       availableAssets,
       bookFormulaIndex,
+      bookParagraphs,
     });
     errors.push(...result.errors.map((e) => `${ch.file}: ${e}`));
     warnings.push(...result.warnings.map((w) => `${ch.file}: ${w}`));
@@ -367,6 +438,7 @@ export function validateBundle(
     const ex = validateExercises(extras.eserciziRaw, 'esercizi');
     errors.push(...ex.errors.map((e) => `esercizi.md: ${e}`));
     warnings.push(...ex.warnings.map((w) => `esercizi.md: ${w}`));
+    validateExerciseRefs(extras.eserciziRaw, 'esercizi.md', bookParagraphs, bookFormulaIndex, warnings);
   }
   if (extras.esamiRaw) {
     validateImagesInContent(extras.esamiRaw, 'esami.md', errors, warnings, strict, availableAssets);
@@ -374,6 +446,7 @@ export function validateBundle(
     const ex = validateExercises(extras.esamiRaw, 'esami');
     errors.push(...ex.errors.map((e) => `esami.md: ${e}`));
     warnings.push(...ex.warnings.map((w) => `esami.md: ${w}`));
+    validateExerciseRefs(extras.esamiRaw, 'esami.md', bookParagraphs, bookFormulaIndex, warnings);
   }
   if (extras.graficiRaw) validateGraficiRaw(extras.graficiRaw, errors);
   if (extras.ideRaw) validateIdeRaw(extras.ideRaw, errors);
