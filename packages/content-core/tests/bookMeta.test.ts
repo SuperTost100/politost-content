@@ -1,13 +1,14 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { CONTENT_FORMAT_VERSION, compareSpecVersions, validateBookMeta } from '../src/bookMeta.ts';
 import { validateBundle } from '../src/validateChapter.ts';
 
 describe('validateBookMeta', () => {
-  it('reads the format version the spec in this repository describes', () => {
-    const spec = readFileSync(new URL('../../../spec/VERSION', import.meta.url), 'utf8').trim();
-    assert.equal(CONTENT_FORMAT_VERSION, spec);
+  // Copies of this package outside the content repository (the reader's) have no spec/.
+  const specVersion = new URL('../../../spec/VERSION', import.meta.url);
+  it('reads the format version the spec in this repository describes', { skip: !existsSync(specVersion) }, () => {
+    assert.equal(CONTENT_FORMAT_VERSION, readFileSync(specVersion, 'utf8').trim());
   });
 
   it('accepts a book with no metadata, as in spec 1.0', () => {
