@@ -32,13 +32,19 @@ function extractMathSlots(text: string, slots: MathSlot[] = []): { text: string;
   return { text: withSlots, slots };
 }
 
-/** [[hover:1.2]] and [[link:ref|label]] become opaque slots so markdown cannot split them */
+/**
+ * [[hover:1.2]] and [[link:ref|label]] become opaque slots so markdown cannot split them.
+ * Math in a label goes into `math`.
+ */
 function extractRefSlots(text: string, math: MathSlot[], slots: RefSlot[] = []): { text: string; slots: RefSlot[] } {
   const withSlots = text.replace(
     /\[\[hover:([\d.]+)\]\]|\[\[link:([^|\]]+)\|([^\]]+)\]\]/g,
     (source: string, formulaId: string | undefined, ref: string | undefined, label: string | undefined) => {
-      source = restoreSlotSource(source, math, []);
-      slots.push(formulaId ? { kind: 'hover', formulaId, source } : { kind: 'link', ref: ref!, label: label!, source });
+      slots.push(
+        formulaId
+          ? { kind: 'hover', formulaId, source }
+          : { kind: 'link', ref: ref!, label: extractMathOutsideCode(label!, math), source },
+      );
       return `${REF_SLOT}${slots.length - 1}${REF_SLOT}`;
     },
   );
@@ -52,19 +58,24 @@ function extractRefSlots(text: string, math: MathSlot[], slots: RefSlot[] = []):
 const CODE_RE =
   /^[ \t]*(?:(?:>|[-*+]|\d{1,9}[.)])[ \t]*)*(`{3,}(?=[^`\n]*\n)|~{3,})[^\n]*\n[\s\S]*?(?:^[ \t>]*\1[`~]*[ \t]*$|(?![\s\S]))|(`+)(?!`)[^\n]*?[^`\n]\2(?!`)/gm;
 
-/** Math and ref slots for markdown text, leaving code untouched */
+/**
+ * Ref slots first, so code inside a link label cannot split the link; then math, leaving code untouched.
+ * A ref inside code is put back by restoreSlotSource.
+ */
 function extractSlots(text: string): { text: string; ctx: SlotContext } {
   const ctx: SlotContext = { math: [], refs: [] };
-  const slotProse = (prose: string) =>
-    extractRefSlots(extractMathSlots(prose, ctx.math).text, ctx.math, ctx.refs).text;
+  const withRefs = extractRefSlots(text, ctx.math, ctx.refs).text;
+  return { text: extractMathOutsideCode(withRefs, ctx.math), ctx };
+}
 
+function extractMathOutsideCode(text: string, math: MathSlot[]): string {
   let out = '';
   let last = 0;
   for (const code of text.matchAll(CODE_RE)) {
-    out += slotProse(text.slice(last, code.index)) + code[0];
+    out += extractMathSlots(text.slice(last, code.index), math).text + code[0];
     last = code.index + code[0].length;
   }
-  return { text: out + slotProse(text.slice(last)), ctx };
+  return out + extractMathSlots(text.slice(last), math).text;
 }
 
 /** Put the original text back for any slot markdown-it still placed inside code */
