@@ -173,6 +173,15 @@ describe('parseContentBlocks', () => {
     assert.deepEqual(ofType(blocks, 'code')[0], { type: 'code', text: 'print("$$")' });
   });
 
+  it('does not let $$ pair across a fence inside a quote or a list item', async () => {
+    const { parseContentBlocks } = await load();
+    for (const [open, close] of [['> ```', '> ```'], ['- ```', '  ```']]) {
+      const blocks = parseContentBlocks(`Costo $$ alto.\n\n${open}\n${close.slice(0, 2)}x = "$$"\n${close}\n\nFine.`);
+      assert.deepEqual(blocks.map((b) => b.type), ['p', open.startsWith('>') ? 'quote' : 'list', 'p'], open);
+      assert.doesNotMatch(JSON.stringify(blocks), /katex/, open);
+    }
+  });
+
   it('keeps math in inline code as source and still renders math outside it', async () => {
     const { parseInlineSegments } = await load();
     const html = textOf(parseInlineSegments('Scrivi `$\\frac{a}{b}$` per ottenere $\\frac{a}{b}$, o `[[hover:1.1]]`.'));
