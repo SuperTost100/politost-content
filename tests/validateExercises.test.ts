@@ -27,6 +27,12 @@ describe('validateExercises', () => {
     assert.equal(r.exerciseCount, 1);
   });
 
+  it('warns about a missing hint in exercises but not in exams', () => {
+    const noHint = (type: string) => `---\ntype: ${type}\n---\n\n:::exercise{id="X1" difficulty="medio"}\n## Domanda\nQ?\n\n:::solution\nS\n:::\n:::`;
+    assert.deepEqual(validateExercises(noHint('esercizi'), 'esercizi').warnings, ['X1: hint mancante']);
+    assert.deepEqual(validateExercises(noHint('esami'), 'esami').warnings, []);
+  });
+
   it('rejects wrong frontmatter type', () => {
     const r = validateExercises(SAMPLE, 'esami');
     assert.equal(r.valid, false);

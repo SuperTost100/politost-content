@@ -72,7 +72,8 @@ export function validateExercises(
     if (seen.has(ex.id)) errors.push(`id duplicato: ${ex.id}`);
     seen.add(ex.id);
     if (!ex.question.trim()) warnings.push(`${ex.id}: domanda vuota`);
-    if (!ex.hint?.trim()) warnings.push(`${ex.id}: hint mancante`);
+    // Exams are practised as on the day: no hint expected.
+    if (expectedType === 'esercizi' && !ex.hint?.trim()) warnings.push(`${ex.id}: hint mancante`);
     if (!ex.solution?.trim()) warnings.push(`${ex.id}: solution mancante`);
   }
 
