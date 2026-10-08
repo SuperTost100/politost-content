@@ -27,5 +27,5 @@ ptsb-pack inspect libro.ptsb
 | Componente | Uso |
 |------------|-----|
 | [politost-smartbook](https://github.com/SuperTost100/politost-smartbook) | `npm run pack:ptsb` |
-| [Smart Builder](https://github.com/SuperTost100/politost-smartbook-builder) | Export `.ptsb` dall’app corrente (privata) |
+| [Smart Builder](https://github.com/SuperTost100/politost-smartbook-builder) | Export `.ptsb` dall’app corrente (pubblica) |
 | Platform API | CEK unwrap per `.ptsb` cifrati |
