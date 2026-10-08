@@ -178,7 +178,7 @@ function parseJson<T>(bytes: Uint8Array, name: string): T {
   try {
     return JSON.parse(decodeText(bytes)) as T;
   } catch (e) {
-    throw new Error(`${name}: JSON non valido — ${(e as Error).message}`);
+    throw new Error(`${name}: JSON non valido — ${(e as Error).message}`, { cause: e });
   }
 }
 

@@ -27,8 +27,8 @@ export {
 
 export {
   renderLatexInText,
-  splitMarkdownBlocks,
   renderInlineFragment,
+  segmentsToHtml,
   parseInlineSegments,
   parseContentBlocks,
 } from './renderContent';

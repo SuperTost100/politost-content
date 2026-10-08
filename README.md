@@ -1,32 +1,51 @@
-# @politost/content-core
+# Politost content
 
-Parser, renderer, and validator for [Politost Smartbook](https://github.com/SuperTost100/politost-smartbook) markdown.
+Everything that defines and handles a Politost smartbook outside the reader: the format spec, the TypeScript parser and validator, and the Python pack CLI.
 
-Spec: [politost-content-format](https://github.com/SuperTost100/politost-content-format)
+| Directory | What it is | License | Released as |
+|-----------|------------|---------|-------------|
+| [`spec/`](spec) | Content format specification, version in [`spec/VERSION`](spec/VERSION) (1.2) | AGPL-3.0 | Part of the repository |
+| [`packages/content-core/`](packages/content-core) | `@politost/content-core`: parser, renderer, validators, `.ptsb` reader | MIT | npm tarball on each `content-core-v*` release |
+| [`packages/ptsb-pack/`](packages/ptsb-pack) | `ptsb-pack` CLI: validate, pack, encrypt and inspect `.ptsb` files | AGPL-3.0 | `pip install` from a tag |
 
-## Install
+Until October 2026 these were three repositories. `politost-content-format` and `politost-ptsb-pack` were merged here with their history.
+
+## Using it
+
+content-core, pinned to a release tarball:
 
 ```bash
-npm install github:SuperTost100/politost-content-core
+npm install https://github.com/SuperTost100/politost-content-core/releases/download/content-core-v0.3.0/politost-content-core-0.3.0.tgz
 ```
 
-Monorepo dev: `file:../packages/content-core`
-
-## Test
+ptsb-pack, pinned to a tag:
 
 ```bash
-npm ci && npm test
+pip install "git+https://github.com/SuperTost100/politost-content-core.git@ptsb-pack-v1.1.0#subdirectory=packages/ptsb-pack"
 ```
 
-## Exports
+Consumers: the [reader](https://github.com/SuperTost100/politost-smartbook) keeps a copy in `packages/content-core`, Smart Builder pins the tarball URL, Pyxis vendors the tarball, the platform vendors ptsb-pack.
 
-- `parseChapterMarkdown`, `parseExercises`, `validateChapter`, `validateBundle`
-- `renderContent`, `formulaRender`, `assetResolver`
-- `.ptsb` plain packages: `ptsbKind`, `safeUnzip`, `readPtsb`, `parsePtsbEntries`, `readPtsbManifest`. Encrypted packages are detected and refused. Decryption stays in the reader, since it needs the Politost platform
-- Types in `types/smartbook.ts`
+## Changing the format
 
-`readPtsb` and `parsePtsbEntries` return non-fatal validation notices in `bundle.warnings`. Display them to readers, especially when a book declares a newer content-format version. Invalid bundles still throw.
+One pull request covers the whole change:
 
-## License
+1. Edit `spec/content-format.md` and, if the syntax or the validation rules change, bump `spec/VERSION` and `CONTENT_FORMAT_VERSION` in `packages/content-core/src/bookMeta.ts`. content-core's tests fail if the two differ.
+2. Update the parser and validator in content-core, and the matching checks in `packages/ptsb-pack/ptsb_pack/validate.py`.
+3. Bump the package versions you changed.
 
-MIT. The reader, ptsb-pack and the content-format spec stay AGPL-3.0. content-core is MIT so that apps under other licenses, such as PoliTost Pyxis, can read smartbooks with the same code the reader uses.
+CI runs both test suites on every push.
+
+## Releasing
+
+content-core: bump `version` in `packages/content-core/package.json`, merge, then push an annotated tag whose message is the release notes:
+
+```bash
+git tag -a content-core-v0.3.1 -F notes.md && git push origin content-core-v0.3.1
+```
+
+The release workflow checks the tag against `package.json`, runs the tests and attaches `politost-content-core-<version>.tgz`.
+
+ptsb-pack: bump `version` in `packages/ptsb-pack/pyproject.toml`, merge, then push a `ptsb-pack-v<version>` tag. pip installs straight from the tag.
+
+Tags `v0.1.0` to `v0.2.1` are content-core releases from before the merge.

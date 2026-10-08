@@ -1,12 +1,29 @@
 name: CI
 on: [push, pull_request]
 jobs:
-  test:
+  content-core:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/content-core
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
-      - run: npm ci && npm test
+          cache-dependency-path: packages/content-core/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+  ptsb-pack:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/ptsb-pack
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: pip install -e . pytest && pytest tests/ -q
