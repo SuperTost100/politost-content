@@ -298,6 +298,11 @@ This exercise has no closing fence at all
     assert.ok(r.errors.some((e) => e.includes('chapters[2].number deve essere un intero positivo')));
   });
 
+  it('reports chapter entries that are not objects instead of throwing', () => {
+    const r = validateBundle({ id: 'demo-book', chapters: [null as unknown as { file: string; number: number }] }, {});
+    assert.ok(r.errors.includes('smartbook.json: chapters[0] non è un oggetto'));
+  });
+
   it('warns about missing sections without rejecting the book', () => {
     const r = validateBundle({ id: 'demo-book', chapters: [{ file: 'a.md', number: 1 }] }, { 'a.md': VALID });
     assert.equal(r.valid, true);

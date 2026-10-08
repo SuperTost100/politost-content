@@ -409,7 +409,7 @@ export function validateBundle(
   warnings.push(...meta.warnings);
 
   const parsedChapters = chapters.flatMap((ch) => {
-    const raw = ch && chapterFiles[ch.file];
+    const raw = ch && typeof ch === 'object' ? chapterFiles[ch.file] : undefined;
     return raw === undefined ? [] : [parseChapterMarkdown(raw, ch.number)];
   });
   const bookFormulaIndex = buildFormulaIndex(parsedChapters);
