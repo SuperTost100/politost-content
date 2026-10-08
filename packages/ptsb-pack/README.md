@@ -2,14 +2,14 @@
 
 CLI Python per validare, impacchettare e ispezionare file **`.ptsb`**.
 
-Spec: [politost-content-format](https://github.com/SuperTost100/politost-content-format) · Dettaglio binario: [docs/ptsb.md](https://github.com/SuperTost100/politost-smartbook/blob/main/docs/ptsb.md)
+Spec: [`spec/content-format.md`](../../spec/content-format.md) · Dettaglio binario: [docs/ptsb.md](https://github.com/SuperTost100/politost-smartbook/blob/main/docs/ptsb.md)
 
 ## Installazione
 
 ```bash
-pip install git+https://github.com/SuperTost100/politost-ptsb-pack.git
-# oppure
-git clone https://github.com/SuperTost100/politost-ptsb-pack.git && cd politost-ptsb-pack && pip install -e .
+pip install "git+https://github.com/SuperTost100/politost-content-core.git@ptsb-pack-v1.1.0#subdirectory=packages/ptsb-pack"
+# oppure, da un clone
+pip install -e packages/ptsb-pack
 ```
 
 ## Comandi

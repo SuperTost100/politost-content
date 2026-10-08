@@ -165,3 +165,21 @@ def test_rejects_bad_book_metadata(tmp_path: Path, meta: dict, pattern: str) -> 
     _write_bundle(tmp_path, chapter_md="## p1 | Intro\n\nTesto.\n", meta=meta)
     with pytest.raises(ValueError, match=pattern):
         load_smartbook_config(tmp_path)
+
+
+@pytest.mark.parametrize("leak", ["</markdown>", "</invoke>", '<parameter name="content">', "</function_calls>"])
+def test_rejects_leftover_generator_markup(tmp_path: Path, leak: str) -> None:
+    _write_bundle(tmp_path, chapter_md=f"## p1 | Intro\n\nTesto.\n{leak}\n")
+    with pytest.raises(ValueError, match=r"ch01\.md, riga 4: markup del generatore"):
+        load_smartbook_config(tmp_path)
+
+
+def test_rejects_generator_markup_in_esami(tmp_path: Path) -> None:
+    _write_bundle(tmp_path, chapter_md="## p1 | Intro\n\nTesto.\n", extras={"esami.md": "---\ntype: esami\n---\n</invoke>\n"})
+    with pytest.raises(ValueError, match=r"esami\.md, riga 4"):
+        load_smartbook_config(tmp_path)
+
+
+def test_allows_angle_brackets_in_prose_and_math(tmp_path: Path) -> None:
+    _write_bundle(tmp_path, chapter_md="## p1 | Intro\n\nSe $a<b$ e $c>d$, il <markdown-it> parser non conta: <parameters>.\n")
+    load_smartbook_config(tmp_path)

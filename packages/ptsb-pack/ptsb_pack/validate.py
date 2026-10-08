@@ -16,6 +16,10 @@ IMAGE_SRC = re.compile(r'src="([^"]+)"')
 GRAFICO_TYPES = {"function", "plotly"}
 IDE_FIELDS = ("id", "title", "language", "code")
 SPEC_VERSION_RE = re.compile(r"^\d+\.\d+$")
+# Same pattern as TOOL_MARKUP in content-core's validateChapter.ts.
+TOOL_MARKUP = re.compile(
+    r"</?(?:markdown|invoke|parameter|function_calls|antml:[\w-]+|tool_use|tool_result)(?=[\s/>])[^>]*>", re.I
+)
 
 
 def _inside(root: Path, path: Path, label: str) -> Path:
@@ -97,6 +101,10 @@ def _required_assets(bundle_dir: Path, md_files: list[Path]) -> list[str]:
 
     for md in md_files:
         raw = md.read_text(encoding="utf-8")
+        for line_no, line in enumerate(raw.split("\n"), 1):
+            leak = TOOL_MARKUP.search(line)
+            if leak:
+                raise ValueError(f"{md.name}, riga {line_no}: markup del generatore non rimosso {leak.group(0)!r}")
         if MD_IMAGE.search(raw):
             raise ValueError(f"{md.name}: usa un blocco :::image al posto di ![]()")
         for match in IMAGE_BLOCK.finditer(raw):
