@@ -9,12 +9,15 @@ Spec: [`spec/content-format.md`](../../spec/content-format.md), format version i
 Each release has an npm tarball attached. Pin it by URL:
 
 ```bash
-npm install https://github.com/SuperTost100/politost-content/releases/download/content-core-v0.3.2/politost-content-core-0.3.2.tgz
+npm install https://github.com/SuperTost100/politost-content/releases/download/content-core-v0.4.0/politost-content-core-0.4.0.tgz
 ```
 
-Or download the `.tgz` and vendor it (`"@politost/content-core": "file:vendor/politost-content-core-0.3.2.tgz"`). Releases up to v0.2.1 had the package at the repository root, so `https://codeload.github.com/SuperTost100/politost-content/tar.gz/refs/tags/v0.2.1` still works for those.
+Or download the `.tgz` and vendor it (`"@politost/content-core": "file:vendor/politost-content-core-0.4.0.tgz"`). Releases up to v0.2.1 had the package at the repository root, so `https://codeload.github.com/SuperTost100/politost-content/tar.gz/refs/tags/v0.2.1` still works for those.
 
 The package ships TypeScript source (`exports` points to `src/index.ts`). Consumers need a bundler or `tsx`.
+
+> [!IMPORTANT]
+> The HTML from `renderContent` and `formulaRender` needs the KaTeX stylesheet from the same KaTeX version that content-core uses, currently `katex@^0.19.0`. Add that range to the app's own dependencies so npm installs a single copy, and import `katex/dist/katex.min.css` from it. A stylesheet from KaTeX 0.17 or older does not match the class names and breaks formula layout.
 
 ## Test
 
@@ -30,6 +33,12 @@ npm ci && npm test && npm run typecheck
 - Types in `types/smartbook.ts`
 
 `readPtsb` and `parsePtsbEntries` return non-fatal validation notices in `bundle.warnings`. Display them to readers, especially when a book declares a newer content-format version. Invalid bundles still throw.
+
+## Changes in 0.4.0
+
+- Breaking: KaTeX goes from 0.17 to 0.19. From 0.18 on, KaTeX renames some of its classes (`base`, `strut`, `tag`, `accent`, `sizing` and others now start with `katex-`), so apps must update their KaTeX stylesheet together with content-core. See [Install](#install). Most classes keep their names, including `katex`, `katex-display` and atom classes like `mord` and `mrel`.
+- This also fixes Dependabot alert 3 (prototype pollution in KaTeX settings, fixed in 0.18.2). content-core never sets `trust`, so it was not exploitable here.
+- `sanitizeHtml` keeps the SVG `line` elements of `\cancel`, `\bcancel` and `\xcancel`. Before, the strike-through was removed and only the crossed-out term showed.
 
 ## Changes in 0.3.2
 

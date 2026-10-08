@@ -14,7 +14,8 @@ const KATEX_MATHML_ATTR = [
   'largeop', 'depth', 'voffset', 'notation', 'mathcolor', 'mathbackground', 'display', 'side',
 ];
 
-const KATEX_SVG_TAGS = ['svg', 'path'];
+/** `line` draws the strokes of \cancel, \bcancel and \xcancel. */
+const KATEX_SVG_TAGS = ['svg', 'path', 'line'];
 
 const ALLOWED_TAGS = [
   'strong', 'em', 'code', 'span', 'div', 'p', 'br',
@@ -25,6 +26,7 @@ const ALLOWED_TAGS = [
 const ALLOWED_ATTR = [
   'class', 'style', 'aria-hidden', 'encoding', 'xmlns',
   'width', 'height', 'viewBox', 'preserveAspectRatio', 'd',
+  'x1', 'y1', 'x2', 'y2', 'stroke-width',
   ...KATEX_MATHML_ATTR,
 ];
 

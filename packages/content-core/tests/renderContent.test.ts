@@ -98,6 +98,14 @@ describe('renderLatexInText', () => {
     assert.match(html, />f</);
     assert.match(html, />x</);
   });
+
+  it('keeps the strokes of \\cancel after sanitizing', async () => {
+    const { renderLatexInText } = await load();
+    const { sanitizeHtml } = await import('../src/sanitizeHtml.ts');
+    const html = sanitizeHtml(renderLatexInText('$\\xcancel{x}$'));
+    assert.equal(html.match(/<line /g)?.length, 2);
+    assert.match(html, /x1="0" y1="0" x2="100%" y2="100%" stroke-width="0.046em"/);
+  });
 });
 
 describe('parseContentBlocks', () => {

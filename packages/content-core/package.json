@@ -1,6 +1,6 @@
 {
   "name": "@politost/content-core",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -21,7 +21,7 @@
   "dependencies": {
     "dompurify": "^3.4.16",
     "fflate": "^0.8.3",
-    "katex": "^0.17.0",
+    "katex": "^0.19.0",
     "markdown-it": "^15.0.2"
   },
   "devDependencies": {
