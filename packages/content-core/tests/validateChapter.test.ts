@@ -161,6 +161,27 @@ See {{formula:9.9}}.
     assert.equal(missing.valid, false);
     assert.ok(missing.errors.some((e) => e.includes('formula assente')));
   });
+
+  it('skips code when checking ** pairs and LaTeX', () => {
+    const raw = '## p1 | Uno\n\n```python\nx = 2**10\nprint(f"costo $x_$")\n```\n\nUsa `a**b`.\n';
+    const r = validateChapter(raw, 1, { profile: 'ship' });
+    assert.deepEqual(r.errors, []);
+  });
+
+  it('reports a missing asset once', () => {
+    const raw = '## p1 | Uno\n\n:::image{src="assets/a.png" alt="A"}\n:::\n';
+    const r = validateChapter(raw, 1, { profile: 'ship', availableAssets: new Set() });
+    assert.deepEqual(r.errors, ['Capitolo: asset mancante "assets/a.png"']);
+  });
+
+  it('accepts a hover to a formula in another chapter of the book', () => {
+    const index = buildFormulaIndex([parseChapterMarkdown(VALID, 1)]);
+    const r = validateChapter('## p1 | Due\n\nCome nella {{formula:1.1}}.\n', 2, {
+      profile: 'ship',
+      bookFormulaIndex: index,
+    });
+    assert.deepEqual(r.errors, []);
+  });
 });
 
 describe('validateBundle', () => {
@@ -265,5 +286,66 @@ This exercise has no closing fence at all
     );
     assert.equal(ide.valid, false);
     assert.ok(ide.errors.some((e) => e.includes('IdeSnippet')));
+  });
+
+  it('rejects duplicate and non-integer chapter numbers', () => {
+    const r = validateBundle(
+      { id: 'demo-book', chapters: [{ file: 'a.md', number: 1 }, { file: 'a.md', number: 1 }, { file: 'b.md', number: '2' as unknown as number }] },
+      { 'a.md': '## p1 | A\n\nA.\n', 'b.md': '## p1 | B\n\nB.\n' },
+    );
+    assert.ok(r.errors.includes('smartbook.json: number ripetuto in chapters: 1'));
+    assert.ok(r.errors.includes('smartbook.json: file ripetuto in chapters: a.md'));
+    assert.ok(r.errors.some((e) => e.includes('chapters[2].number deve essere un intero positivo')));
+  });
+
+  it('reports chapter entries that are not objects instead of throwing', () => {
+    const r = validateBundle({ id: 'demo-book', chapters: [null as unknown as { file: string; number: number }] }, {});
+    assert.ok(r.errors.includes('smartbook.json: chapters[0] non è un oggetto'));
+  });
+
+  it('warns about missing sections without rejecting the book', () => {
+    const r = validateBundle({ id: 'demo-book', chapters: [{ file: 'a.md', number: 1 }] }, { 'a.md': VALID });
+    assert.equal(r.valid, true);
+    assert.ok(r.warnings.some((w) => w.includes('sections senza { enabled, label }')));
+  });
+
+  it('warns about links to a paragraph missing in another chapter', () => {
+    const r = validateBundle(
+      { id: 'demo-book', chapters: [{ file: 'a.md', number: 1 }, { file: 'b.md', number: 2 }] },
+      { 'a.md': '## p1 | A\n\nVedi [qui](ref:chapter/2#p9) e [là](ref:chapter/2#p1).\n', 'b.md': '## p1 | B\n\nB.\n' },
+    );
+    assert.deepEqual(
+      r.warnings.filter((w) => w.includes('ref:chapter')),
+      ['a.md: Paragrafo p1: link ref:chapter/2#p9 — paragrafo p9 assente'],
+    );
+  });
+
+  it('warns about broken refs, chapters and LaTeX in exercises', () => {
+    const eserciziRaw = `---
+type: esercizi
+---
+
+:::exercise{id="E1.1" chapter="9"}
+Usa {{formula:7.7}}, {{formula:1.1}} e $\\frac{1}$.
+:::hint
+H
+:::
+:::solution
+S
+:::
+:::
+`;
+    const r = validateBundle(
+      { id: 'demo-book', chapters: [{ file: 'a.md', number: 1 }] },
+      { 'a.md': VALID },
+      {},
+      { eserciziRaw },
+    );
+    assert.equal(r.valid, true);
+    const notes = r.warnings.filter((w) => w.startsWith('esercizi.md: E1.1'));
+    assert.equal(notes.length, 3, notes.join('\n'));
+    assert.ok(notes[0].includes('chapter="9"'));
+    assert.ok(notes[1].includes('{{formula:7.7}}'));
+    assert.ok(notes[2].includes('LaTeX inline invalido'));
   });
 });

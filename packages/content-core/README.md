@@ -9,10 +9,10 @@ Spec: [`spec/content-format.md`](../../spec/content-format.md), format version i
 Each release has an npm tarball attached. Pin it by URL:
 
 ```bash
-npm install https://github.com/SuperTost100/politost-content/releases/download/content-core-v0.3.1/politost-content-core-0.3.1.tgz
+npm install https://github.com/SuperTost100/politost-content/releases/download/content-core-v0.3.2/politost-content-core-0.3.2.tgz
 ```
 
-Or download the `.tgz` and vendor it (`"@politost/content-core": "file:vendor/politost-content-core-0.3.1.tgz"`). Releases up to v0.2.1 had the package at the repository root, so `https://codeload.github.com/SuperTost100/politost-content/tar.gz/refs/tags/v0.2.1` still works for those.
+Or download the `.tgz` and vendor it (`"@politost/content-core": "file:vendor/politost-content-core-0.3.2.tgz"`). Releases up to v0.2.1 had the package at the repository root, so `https://codeload.github.com/SuperTost100/politost-content/tar.gz/refs/tags/v0.2.1` still works for those.
 
 The package ships TypeScript source (`exports` points to `src/index.ts`). Consumers need a bundler or `tsx`.
 
@@ -30,6 +30,18 @@ npm ci && npm test && npm run typecheck
 - Types in `types/smartbook.ts`
 
 `readPtsb` and `parsePtsbEntries` return non-fatal validation notices in `bundle.warnings`. Display them to readers, especially when a book declares a newer content-format version. Invalid bundles still throw.
+
+## Changes in 0.3.2
+
+- `serializeChapter` keeps `$$` in numbered formulas. 0.3.1 wrote `$$v$$` back as `$v$`.
+- Chapters and exercise files saved with Windows line endings (CRLF) parse like the others. Before, their formulas were lost.
+- Text before `## p1` stays in p1, with a warning. Before, it shifted every paragraph's text by one and dropped the last.
+- `{{formula:X.Y}}` can point to a formula in another chapter, as the reader already allowed. Ship mode used to reject it.
+- Fenced code and inline code are skipped by the `**` and LaTeX checks, so `x**2` in a Python block is no longer an error.
+- A missing image is reported once instead of three times.
+- `esercizi.md` and `esami.md` can put `type:` anywhere in the frontmatter.
+- `validateBundle` rejects duplicate chapter numbers or files and non-integer numbers. It warns about missing `sections`, links to paragraphs missing in other chapters, and, in exercises, unknown `chapter`, broken refs and invalid LaTeX.
+- `parsePtsbEntries` gives a clear error when `smartbook.json` is not an object.
 
 ## Changes in 0.3.1
 

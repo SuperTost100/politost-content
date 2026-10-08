@@ -15,7 +15,8 @@ function restoreFormulas(content: string, formulas: FormulaRef[]): string {
   let out = content;
   for (const f of formulas) {
     const block = `:::formula{id="${f.id}" label="${f.label}"}\n${f.latex}\n:::`;
-    out = out.replace(`<!--FORMULA:${f.id}-->`, block);
+    // A replacer function, because a replacement string would turn `$$` into `$`.
+    out = out.replace(`<!--FORMULA:${f.id}-->`, () => block);
   }
   return out;
 }

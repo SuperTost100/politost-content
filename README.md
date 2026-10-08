@@ -54,7 +54,7 @@ Until October 2026 these were three repositories. This one was called `politost-
 content-core, pinned to a release tarball:
 
 ```bash
-npm install https://github.com/SuperTost100/politost-content/releases/download/content-core-v0.3.1/politost-content-core-0.3.1.tgz
+npm install https://github.com/SuperTost100/politost-content/releases/download/content-core-v0.3.2/politost-content-core-0.3.2.tgz
 ```
 
 ptsb-pack, pinned to a tag:
@@ -80,7 +80,7 @@ CI runs both test suites on every push.
 content-core: bump `version` in `packages/content-core/package.json`, merge, then push an annotated tag whose message is the release notes:
 
 ```bash
-git tag -a content-core-v0.3.1 -F notes.md && git push origin content-core-v0.3.1
+git tag -a content-core-v0.3.2 -F notes.md && git push origin content-core-v0.3.2
 ```
 
 The release workflow checks the tag against `package.json`, runs the tests and attaches `politost-content-core-<version>.tgz`.

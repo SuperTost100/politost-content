@@ -58,6 +58,11 @@ function extractRefSlots(text: string, math: MathSlot[], slots: RefSlot[] = []):
 const CODE_RE =
   /^[ \t]*(?:(?:>|[-*+]|\d{1,9}[.)])[ \t]*)*(`{3,}(?=[^`\n]*\n)|~{3,})[^\n]*\n[\s\S]*?(?:^[ \t>]*\1[`~]*[ \t]*$|(?![\s\S]))|(`+)(?!`)[^\n]*?[^`\n]\2(?!`)/gm;
 
+/** Code replaced by spaces, line breaks kept, so validators skip what the renderer shows verbatim. */
+export function blankCode(text: string): string {
+  return text.replace(CODE_RE, (code) => code.replace(/[^\n]/g, ' '));
+}
+
 /**
  * Ref slots first, so code inside a link label cannot split the link; then math, leaving code untouched.
  * A ref inside code is put back by restoreSlotSource.

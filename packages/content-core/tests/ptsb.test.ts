@@ -7,7 +7,12 @@ const CONFIG = {
   id: 'demo-book',
   title: 'Demo',
   subject: 'Fisica',
-  sections: {},
+  sections: Object.fromEntries(
+    ['smartbook', 'formulario', 'esercizi', 'esami', 'ide', 'grafici', 'risposte'].map((key) => [
+      key,
+      { enabled: true, label: key },
+    ]),
+  ),
   chapters: [{ id: 'uno', number: 1, title: 'Uno', file: '01-uno.md', printable: true }],
 };
 
@@ -74,6 +79,13 @@ describe('readPtsb', () => {
   it('reports validator errors', () => {
     const files = { ...VALID_FILES, 'chapters/01-uno.md': 'nessun paragrafo' };
     assert.throws(() => readPtsb(pack(files)), /paragrafo/);
+  });
+});
+
+describe('readPtsb config shape', () => {
+  it('rejects a smartbook.json that is not an object', () => {
+    const bytes = zipSync({ 'smartbook.json': strToU8('null') });
+    assert.throws(() => readPtsb(bytes), /atteso un oggetto JSON/);
   });
 });
 

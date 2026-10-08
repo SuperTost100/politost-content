@@ -1,4 +1,4 @@
-import { parseExercises } from './parser';
+import { normalizeNewlines, parseExercises } from './parser';
 
 export interface ExerciseValidationResult {
   valid: boolean;
@@ -7,7 +7,8 @@ export interface ExerciseValidationResult {
   warnings: string[];
 }
 
-const FM_TYPE = /^---\s*\ntype:\s*(\S+)/;
+const FRONTMATTER = /^---[ \t]*\n([\s\S]*?)\n---/;
+const FM_TYPE = /^type:\s*(\S+)/m;
 const DIFFICULTY = new Set<string>(['facile', 'medio', 'difficile']);
 const FENCE_OPEN = /^:::(exercise|hint|solution)(\{|\s|$)/;
 
@@ -35,11 +36,13 @@ export function validateExercises(
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  const fm = raw.match(FM_TYPE);
-  if (!fm) {
+  raw = normalizeNewlines(raw);
+  const frontmatter = FRONTMATTER.exec(raw);
+  const type = frontmatter ? FM_TYPE.exec(frontmatter[1])?.[1] : undefined;
+  if (!type) {
     errors.push('frontmatter mancante — atteso --- con type');
-  } else if (fm[1] !== expectedType) {
-    errors.push(`type atteso "${expectedType}", trovato "${fm[1]}"`);
+  } else if (type !== expectedType) {
+    errors.push(`type atteso "${expectedType}", trovato "${type}"`);
   }
 
   const body = raw.replace(/^---[\s\S]*?---\n*/, '');

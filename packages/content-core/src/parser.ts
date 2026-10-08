@@ -24,7 +24,13 @@ const IMAGE_MARKER = new RegExp(`<!--IMAGE:(\\{${IMAGE_QUOTED_BRACE}\\})-->`, 'g
 const EXERCISE_OPEN = /:::exercise\{([^}]+)\}\n/g;
 const BLOCK_OPEN = /^(exercise|hint|solution)(\{|\s)/;
 const PARA_HEADER = /^## (p\d+) \| (.+)$/gm;
+const FRONTMATTER_BLOCK = /^---[\s\S]*?---\n*/;
 const MARKDOWN_IMAGE = /!\[[^\]]*\]\([^)]*\)/;
+
+/** CRLF and lone CR become LF, so files saved on Windows parse like the rest. */
+export function normalizeNewlines(raw: string): string {
+  return raw.replace(/\r\n?/g, '\n');
+}
 
 export interface ImageRef {
   src: string;
@@ -82,7 +88,7 @@ export function parseChapterMarkdown(raw: string, chapterNumber: number): Chapte
   const paragraphs: Paragraph[] = [];
   const formulas: FormulaRef[] = [];
 
-  const body = raw.replace(/^---[\s\S]*?---\n*/, '');
+  const body = normalizeNewlines(raw).replace(FRONTMATTER_BLOCK, '');
 
   let formulaContent = body.replace(FORMULA_BLOCK, (full, attrs: string, latex: string) => {
     const parsed = readFormulaAttrs(attrs);
@@ -99,14 +105,16 @@ export function parseChapterMarkdown(raw: string, chapterNumber: number): Chapte
   });
   formulaContent = processImageBlocks(formulaContent);
 
-  const headers = [...body.matchAll(PARA_HEADER)];
-  const parts = formulaContent.split(/^## p\d+ \| /m).filter(Boolean);
-
+  const headers = [...formulaContent.matchAll(PARA_HEADER)];
+  // Text before the first header goes into p1, so nothing is dropped.
+  const preamble = headers.length ? formulaContent.slice(0, headers[0].index).trim() : '';
   headers.forEach((match, i) => {
+    const start = match.index + match[0].length;
+    const content = formulaContent.slice(start, headers[i + 1]?.index ?? formulaContent.length).trim();
     paragraphs.push({
       id: match[1],
-      title: match[2],
-      content: withoutLeadingTitle(parts[i] ?? '', match[2]),
+      title: match[2].trim(),
+      content: i === 0 && preamble ? `${preamble}\n\n${content}`.trim() : content,
     });
   });
 
@@ -117,6 +125,9 @@ export function parseChapterMarkdown(raw: string, chapterNumber: number): Chapte
       `${orphanFormulas} riga/e :::formula non canoniche — usa :::formula{id="X.Y" label="…"}\\n$$…$$\\n:::`,
     );
   }
+  if (preamble) {
+    warnings.push(`Testo prima di ## ${headers[0][1]}: spostalo dentro un paragrafo`);
+  }
 
   return {
     meta: { id: '', number: chapterNumber, title: '', file: '', printable: true },
@@ -124,14 +135,6 @@ export function parseChapterMarkdown(raw: string, chapterNumber: number): Chapte
     formulas,
     warnings: warnings.length ? warnings : undefined,
   };
-}
-
-function withoutLeadingTitle(part: string, title: string): string {
-  const trimmed = part.trim();
-  const nl = trimmed.indexOf('\n');
-  const first = (nl === -1 ? trimmed : trimmed.slice(0, nl)).replace(/\r$/, '');
-  if (first !== title) return trimmed;
-  return (nl === -1 ? '' : trimmed.slice(nl + 1)).trim();
 }
 
 function atLineStart(raw: string, idx: number): boolean {
@@ -182,7 +185,7 @@ function readFence(
 }
 
 export function parseExercises(raw: string, defaultType: 'esercizio' | 'esame' = 'esercizio'): Exercise[] {
-  const body = raw.replace(/^---[\s\S]*?---\n*/, '');
+  const body = normalizeNewlines(raw).replace(FRONTMATTER_BLOCK, '');
   const exercises: Exercise[] = [];
   const openRe = new RegExp(EXERCISE_OPEN.source, 'g');
   let match: RegExpExecArray | null;
