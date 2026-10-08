@@ -9,15 +9,15 @@ Canonical specification for Politost Smartbook markdown, `smartbook.json`, exerc
 
 ## Document
 
-- [content-format.md](./content-format.md) — full specification
+- [content-format.md](./content-format.md): full specification (in Italian)
 
 ## Related projects
 
 | Repo | Role |
 |------|------|
 | [politost-smartbook](https://github.com/SuperTost100/politost-smartbook) | OSS reader |
-| [politost-content-core](https://github.com/SuperTost100/politost-content-core) | Parser, renderer, validator |
-| [politost-ptsb-pack](https://github.com/SuperTost100/politost-ptsb-pack) | `.ptsb` pack CLI |
+| [`packages/content-core`](../packages/content-core) | Parser, renderer, validator |
+| [`packages/ptsb-pack`](../packages/ptsb-pack) | `.ptsb` pack CLI |
 | [politost-smartbook-builder](https://github.com/SuperTost100/politost-smartbook-builder) | Current authoring app (private) |
 
-Syntax changes require a version bump in `VERSION` and coordinated updates in content-core, reader, and builder.
+Syntax changes need a version bump in `VERSION` and in `CONTENT_FORMAT_VERSION` (content-core's tests fail if the two differ), then updates in the reader and the builder.
