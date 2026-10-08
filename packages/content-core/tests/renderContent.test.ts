@@ -182,6 +182,14 @@ describe('parseContentBlocks', () => {
     }
   });
 
+  it('reads triple backticks closed on the same line as inline code, not a fence', async () => {
+    const { parseContentBlocks } = await load();
+    const blocks = parseContentBlocks('- ```plot(x)``` disegna $x^2$.\n\nPoi $y$.');
+    const html = JSON.stringify(blocks);
+    assert.match(html, /<code>plot\(x\)<\/code>/);
+    assert.equal(html.match(/class=\\"katex\\"/g)?.length, 2);
+  });
+
   it('keeps math in inline code as source and still renders math outside it', async () => {
     const { parseInlineSegments } = await load();
     const html = textOf(parseInlineSegments('Scrivi `$\\frac{a}{b}$` per ottenere $\\frac{a}{b}$, o `[[hover:1.1]]`.'));

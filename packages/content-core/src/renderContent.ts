@@ -50,7 +50,7 @@ function extractRefSlots(text: string, math: MathSlot[], slots: RefSlot[] = []):
  * which keep `$`, `\\(` and `[[…]]` as written
  */
 const CODE_RE =
-  /^[ \t]*(?:(?:>|[-*+]|\d{1,9}[.)])[ \t]*)*(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:^[ \t>]*\1[`~]*[ \t]*$|(?![\s\S]))|(`+)(?!`)[^\n]*?[^`\n]\2(?!`)/gm;
+  /^[ \t]*(?:(?:>|[-*+]|\d{1,9}[.)])[ \t]*)*(`{3,}(?=[^`\n]*\n)|~{3,})[^\n]*\n[\s\S]*?(?:^[ \t>]*\1[`~]*[ \t]*$|(?![\s\S]))|(`+)(?!`)[^\n]*?[^`\n]\2(?!`)/gm;
 
 /** Math and ref slots for markdown text, leaving code untouched */
 function extractSlots(text: string): { text: string; ctx: SlotContext } {
