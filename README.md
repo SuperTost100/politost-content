@@ -73,7 +73,7 @@ One pull request covers the whole change:
 2. Update the parser and validator in content-core, and the matching checks in `packages/ptsb-pack/ptsb_pack/validate.py`.
 3. Bump the package versions you changed.
 
-CI runs both test suites on every push.
+CI runs both test suites on pull requests and on pushes to `main`.
 
 ## Releasing
 
