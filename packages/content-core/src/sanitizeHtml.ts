@@ -1,15 +1,23 @@
 import createDOMPurify from 'dompurify';
 
+/** Every MathML element KaTeX emits; a missing one leaves broken MathML for screen readers. */
 const KATEX_TAGS = [
-  'math', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'mfrac',
-  'mover', 'munder', 'munderover', 'msqrt', 'mroot', 'mtable', 'mtr', 'mtd',
-  'mstyle', 'mspace', 'annotation',
+  'math', 'semantics', 'annotation', 'mrow', 'mi', 'mo', 'mn', 'ms', 'mtext',
+  'msup', 'msub', 'msubsup', 'mfrac', 'mover', 'munder', 'munderover', 'msqrt', 'mroot',
+  'mtable', 'mtr', 'mtd', 'mlabeledtr', 'mstyle', 'mspace', 'mpadded', 'mphantom', 'menclose',
+];
+
+const KATEX_MATHML_ATTR = [
+  'mathvariant', 'stretchy', 'separator', 'fence', 'accent', 'accentunder', 'scriptlevel',
+  'displaystyle', 'linethickness', 'rowspacing', 'columnspacing', 'columnalign', 'columnlines',
+  'rowlines', 'rowalign', 'lspace', 'rspace', 'minsize', 'maxsize', 'movablelimits', 'symmetric',
+  'largeop', 'depth', 'voffset', 'notation', 'mathcolor', 'mathbackground', 'display', 'side',
 ];
 
 const KATEX_SVG_TAGS = ['svg', 'path'];
 
 const ALLOWED_TAGS = [
-  'strong', 'span', 'div', 'p', 'br',
+  'strong', 'em', 'code', 'span', 'div', 'p', 'br',
   ...KATEX_TAGS,
   ...KATEX_SVG_TAGS,
 ];
@@ -17,6 +25,7 @@ const ALLOWED_TAGS = [
 const ALLOWED_ATTR = [
   'class', 'style', 'aria-hidden', 'encoding', 'xmlns',
   'width', 'height', 'viewBox', 'preserveAspectRatio', 'd',
+  ...KATEX_MATHML_ATTR,
 ];
 
 let purify: ReturnType<typeof createDOMPurify> | null = null;

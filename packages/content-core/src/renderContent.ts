@@ -1,11 +1,17 @@
 import katex from 'katex';
+import MarkdownIt, { type Token } from 'markdown-it';
 import { escapeHtml, sanitizeHtml } from './sanitizeHtml';
 
-const MATH_SLOT = '\uE000';
+const MATH_SLOT = '';
+const REF_SLOT = '';
+const MATH_SLOT_RE = new RegExp(`${MATH_SLOT}(\\d+)${MATH_SLOT}`, 'g');
+const REF_SPLIT_RE = new RegExp(`(${REF_SLOT}\\d+${REF_SLOT})`);
+const REF_ONE_RE = new RegExp(`^${REF_SLOT}(\\d+)${REF_SLOT}$`);
 
 type MathSlot = { tex: string; display: boolean };
+type RefSlot = { kind: 'hover'; formulaId: string } | { kind: 'link'; ref: string; label: string };
 
-/** Pull $...$ / $$...$$ / \\(\\) / \\[\\] out before HTML escape so KaTeX sees raw < > */
+/** Pull $...$ / $$...$$ / \\(\\) / \\[\\] out before markdown so `_`, `*` and `<` stay LaTeX */
 function extractMathSlots(text: string): { text: string; slots: MathSlot[] } {
   const slots: MathSlot[] = [];
   const mark = (tex: string, display: boolean) => {
@@ -23,182 +29,286 @@ function extractMathSlots(text: string): { text: string; slots: MathSlot[] } {
   return { text: withSlots, slots };
 }
 
+/** [[hover:1.2]] and [[link:ref|label]] become opaque slots so markdown cannot split them */
+function extractRefSlots(text: string): { text: string; slots: RefSlot[] } {
+  const slots: RefSlot[] = [];
+  const withSlots = text.replace(
+    /\[\[hover:([\d.]+)\]\]|\[\[link:([^|\]]+)\|([^\]]+)\]\]/g,
+    (_, formulaId: string | undefined, ref: string | undefined, label: string | undefined) => {
+      slots.push(formulaId ? { kind: 'hover', formulaId } : { kind: 'link', ref: ref!, label: label! });
+      return `${REF_SLOT}${slots.length - 1}${REF_SLOT}`;
+    },
+  );
+  return { text: withSlots, slots };
+}
+
 function renderMathSlot({ tex, display }: MathSlot): string {
   try {
-    if (display) {
-      return `<div class="katex-block">${katex.renderToString(tex, { displayMode: true, throwOnError: false })}</div>`;
-    }
-    return katex.renderToString(tex, { displayMode: false, throwOnError: false });
+    const html = katex.renderToString(tex, { displayMode: display, throwOnError: false });
+    return display ? `<span class="katex-block">${html}</span>` : html;
   } catch {
-    if (display) {
-      return `<div class="katex-error">${escapeHtml(tex)}</div>`;
-    }
-    return escapeHtml(tex);
+    return display ? `<span class="katex-error">${escapeHtml(tex)}</span>` : escapeHtml(tex);
   }
 }
 
-/** Render LaTeX inline ($...$) and block ($$...$$) inside a text segment */
+/** Render LaTeX inline ($...$) and block ($$...$$) inside a plain-text segment */
 export function renderLatexInText(text: string): string {
   const { text: slotted, slots } = extractMathSlots(text);
-  const escaped = escapeHtml(slotted);
-  const slotRe = new RegExp(`${MATH_SLOT}(\\d+)${MATH_SLOT}`, 'g');
-  return escaped.replace(slotRe, (_, idx) => renderMathSlot(slots[Number(idx)]));
-}
-
-function applyBold(html: string): string {
-  return html
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/<\/strong>(?=[\wÀ-ÿ(])/g, '</strong> ')
-    .replace(/(?<=[\wÀ-ÿ)!])<strong>/g, ' <strong>');
-}
-
-type Block =
-  | { kind: 'p'; text: string }
-  | { kind: 'h3'; text: string }
-  | { kind: 'ul'; items: string[] };
-
-/** Split markdown body into paragraphs, h3 and bullet lists */
-export function splitMarkdownBlocks(text: string): Block[] {
-  const normalized = text.replace(/\r\n/g, '\n').trim();
-  if (!normalized) return [];
-
-  const withSplitBullets = normalized.replace(/:\s+-\s+/g, ':\n\n- ').replace(/\s+-\s+(?=\*\*)/g, '\n- ');
-
-  const blocks: Block[] = [];
-  let currentList: string[] | null = null;
-  let paragraphLines: string[] = [];
-
-  const flushParagraph = () => {
-    const joined = paragraphLines.join(' ').replace(/\s+/g, ' ').trim();
-    paragraphLines = [];
-    if (joined) blocks.push({ kind: 'p', text: joined });
-  };
-
-  const flushList = () => {
-    if (currentList?.length) blocks.push({ kind: 'ul', items: currentList });
-    currentList = null;
-  };
-
-  const lines = withSplitBullets.split('\n');
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trimEnd();
-    const trimmed = line.trim();
-
-    if (!trimmed) {
-      const next = lines.slice(i + 1).find((l) => l.trim());
-      if (next && /^[-*]\s+/.test(next.trim())) {
-        continue;
-      }
-      flushList();
-      flushParagraph();
-      continue;
-    }
-
-    const h3 = trimmed.match(/^###\s+(.+)$/);
-    if (h3) {
-      flushList();
-      flushParagraph();
-      blocks.push({ kind: 'h3', text: h3[1].trim() });
-      continue;
-    }
-
-    const bullet = trimmed.match(/^[-*]\s+(.+)$/);
-    if (bullet) {
-      flushParagraph();
-      if (!currentList) currentList = [];
-      currentList.push(bullet[1].trim());
-      continue;
-    }
-
-    flushList();
-    paragraphLines.push(trimmed);
-  }
-
-  flushList();
-  flushParagraph();
-  return blocks;
-}
-
-function splitEdgeWhitespace(text: string): { leading: string; core: string; trailing: string } {
-  const leading = text.match(/^\s*/)?.[0] ?? '';
-  const trailing = text.match(/\s*$/)?.[0] ?? '';
-  const core = text.slice(leading.length, text.length - trailing.length);
-  return { leading, core, trailing };
-}
-
-/** Inline-only: no paragraph wrappers (for text split around refs) */
-export function renderInlineFragment(text: string, bold = false): string {
-  if (!text) return '';
-  const { leading, core, trailing } = splitEdgeWhitespace(text);
-  if (!core) return escapeHtml(text);
-
-  let html = sanitizeHtml(applyBold(renderLatexInText(core)));
-  if (bold) html = `<strong>${html}</strong>`;
-  return leading + html + trailing;
+  return escapeHtml(slotted).replace(MATH_SLOT_RE, (_, idx) => renderMathSlot(slots[Number(idx)]));
 }
 
 export type InlineSegment =
   | { type: 'text'; html: string }
-  | { type: 'hover'; formulaId: string; bold?: boolean }
-  | { type: 'link'; ref: string; label: string; bold?: boolean };
-
-const INLINE_SEGMENT_RE = /(\[\[hover:[\d.]+\]\]|\[\[link:[^\]]+\]\])/g;
-const BOLD_BLOCK_RE = /\*\*((?:[^*]|\[\[hover:[\d.]+\]\])+)\*\*/g;
-/** Senza gruppi di cattura annidati (split con due gruppi alternati inserisce `undefined`) */
-const BLOCK_MARKER_RE = /<!--FORMULA:[\d.]+-->|<!--IMAGE:\{[\s\S]*?\}-->/g;
-
-function parseInlineSegmentsRaw(text: string, bold = false): InlineSegment[] {
-  const parts = text.split(INLINE_SEGMENT_RE).filter((p) => Boolean(p?.length));
-  const segments: InlineSegment[] = [];
-
-  for (const part of parts) {
-    const hover = part.match(/\[\[hover:([\d.]+)\]\]/);
-    if (hover) {
-      segments.push({ type: 'hover', formulaId: hover[1], bold });
-      continue;
-    }
-
-    const link = part.match(/\[\[link:([^|]+)\|([^\]]+)\]\]/);
-    if (link) {
-      segments.push({ type: 'link', ref: link[1], label: link[2], bold });
-      continue;
-    }
-
-    const html = renderInlineFragment(part, bold);
-    if (html) segments.push({ type: 'text', html });
-  }
-
-  return segments;
-}
-
-/** Split inline text around formula hovers and internal links */
-export function parseInlineSegments(text: string): InlineSegment[] {
-  const segments: InlineSegment[] = [];
-  let lastIndex = 0;
-  const re = new RegExp(BOLD_BLOCK_RE.source, 'g');
-  let match: RegExpExecArray | null;
-
-  while ((match = re.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      segments.push(...parseInlineSegmentsRaw(text.slice(lastIndex, match.index)));
-    }
-    segments.push(...parseInlineSegmentsRaw(match[1], true));
-    lastIndex = re.lastIndex;
-  }
-
-  if (lastIndex < text.length) {
-    segments.push(...parseInlineSegmentsRaw(text.slice(lastIndex)));
-  }
-
-  return segments;
-}
+  | { type: 'strong' | 'em'; children: InlineSegment[] }
+  | { type: 'anchor'; href: string; children: InlineSegment[] }
+  | { type: 'hover'; formulaId: string }
+  | { type: 'link'; ref: string; children: InlineSegment[] };
 
 export type ContentBlock =
-  | { type: 'h3'; segments: InlineSegment[] }
-  | { type: 'p'; segments: InlineSegment[] }
-  | { type: 'ul'; items: InlineSegment[][] }
+  | { type: 'heading'; level: 3 | 4; segments: InlineSegment[] }
+  /** `tight`: paragraph inside a tight list item, rendered without a <p> wrapper */
+  | { type: 'p'; segments: InlineSegment[]; tight?: boolean }
+  | { type: 'math'; html: string }
+  | { type: 'list'; ordered: boolean; start: number; items: ContentBlock[][] }
+  | { type: 'quote'; blocks: ContentBlock[] }
+  | { type: 'code'; text: string }
+  | { type: 'hr' }
   | { type: 'formula'; formulaId: string }
   | { type: 'image'; src: string; alt: string; caption?: string };
+
+const md = new MarkdownIt('commonmark', { html: false, linkify: false, typographer: false });
+// Indented code and setext headings misfire on generated prose; fenced code and `---` rules stay.
+md.disable(['code', 'lheading']);
+
+const SAFE_HREF_RE = /^(https?:|mailto:)/i;
+
+interface SlotContext {
+  math: MathSlot[];
+  refs: RefSlot[];
+}
+
+function restoreMathSource(text: string, ctx: SlotContext): string {
+  return text.replace(MATH_SLOT_RE, (_, idx) => {
+    const slot = ctx.math[Number(idx)];
+    return slot.display ? `$$${slot.tex}$$` : `$${slot.tex}$`;
+  });
+}
+
+function textToHtml(text: string, ctx: SlotContext): string {
+  return escapeHtml(text).replace(MATH_SLOT_RE, (_, idx) => renderMathSlot(ctx.math[Number(idx)]));
+}
+
+function inlineFromTokens(children: Token[], ctx: SlotContext): InlineSegment[] {
+  const root: InlineSegment[] = [];
+  const stack: InlineSegment[][] = [root];
+  const current = () => stack[stack.length - 1];
+
+  const pushHtml = (html: string) => {
+    const list = current();
+    const last = list[list.length - 1];
+    if (last?.type === 'text') last.html += html;
+    else list.push({ type: 'text', html });
+  };
+
+  const pushText = (text: string) => {
+    for (const part of text.split(REF_SPLIT_RE)) {
+      if (!part) continue;
+      const ref = part.match(REF_ONE_RE);
+      if (!ref) {
+        pushHtml(textToHtml(part, ctx));
+        continue;
+      }
+      const slot = ctx.refs[Number(ref[1])];
+      if (slot.kind === 'hover') {
+        current().push({ type: 'hover', formulaId: slot.formulaId });
+      } else {
+        current().push({ type: 'link', ref: slot.ref, children: parseInlineSlotted(slot.label, ctx) });
+      }
+    }
+  };
+
+  const open = (node: Extract<InlineSegment, { children: InlineSegment[] }>) => {
+    current().push(node);
+    stack.push(node.children);
+  };
+  const close = () => {
+    if (stack.length > 1) stack.pop();
+  };
+
+  for (const token of children) {
+    switch (token.type) {
+      case 'text':
+        pushText(token.content);
+        break;
+      case 'code_inline':
+        pushHtml(`<code>${escapeHtml(restoreMathSource(token.content, ctx))}</code>`);
+        break;
+      case 'softbreak':
+        pushHtml('\n');
+        break;
+      case 'hardbreak':
+        pushHtml('<br>');
+        break;
+      case 'strong_open':
+        open({ type: 'strong', children: [] });
+        break;
+      case 'em_open':
+        open({ type: 'em', children: [] });
+        break;
+      case 'link_open': {
+        const href = String(token.attrGet('href') ?? '');
+        open({ type: 'anchor', href: SAFE_HREF_RE.test(href) ? href : '', children: [] });
+        break;
+      }
+      case 'strong_close':
+      case 'em_close':
+      case 'link_close':
+        close();
+        break;
+      case 'image':
+        pushText(token.content);
+        break;
+      default:
+        if (token.content) pushText(token.content);
+    }
+  }
+
+  return sanitizeSegments(root);
+}
+
+function sanitizeSegments(segments: InlineSegment[]): InlineSegment[] {
+  for (const seg of segments) {
+    if (seg.type === 'text') seg.html = sanitizeHtml(seg.html);
+    else if ('children' in seg) sanitizeSegments(seg.children);
+  }
+  return segments;
+}
+
+function parseInlineSlotted(text: string, ctx: SlotContext): InlineSegment[] {
+  const tokens = md.parseInline(text, {});
+  return inlineFromTokens(tokens[0]?.children ?? [], ctx);
+}
+
+/** Inline markdown (bold, italic, code, math, hovers, links) as a segment tree */
+export function parseInlineSegments(text: string): InlineSegment[] {
+  const { text: mathSlotted, slots: math } = extractMathSlots(text);
+  const { text: slotted, slots: refs } = extractRefSlots(mathSlotted);
+  return parseInlineSlotted(slotted, { math, refs });
+}
+
+/** Serialize segments to static HTML (hovers become "(1.2)", links keep their label) */
+export function segmentsToHtml(segments: InlineSegment[]): string {
+  return segments
+    .map((seg) => {
+      switch (seg.type) {
+        case 'text':
+          return seg.html;
+        case 'strong':
+        case 'em':
+          return `<${seg.type}>${segmentsToHtml(seg.children)}</${seg.type}>`;
+        case 'anchor':
+        case 'link':
+          return segmentsToHtml(seg.children);
+        case 'hover':
+          return `(${escapeHtml(seg.formulaId)})`;
+      }
+    })
+    .join('');
+}
+
+/** Inline-only HTML string, no block wrappers */
+export function renderInlineFragment(text: string): string {
+  return segmentsToHtml(parseInlineSegments(text));
+}
+
+/** Paragraph made of a single display-math slot → standalone math block */
+function displayMathOnly(inline: Token | undefined, ctx: SlotContext): string | null {
+  const only = inline?.children?.length === 1 ? inline.children[0] : null;
+  const m = only?.type === 'text' ? only.content.trim().match(new RegExp(`^${MATH_SLOT}(\\d+)${MATH_SLOT}$`)) : null;
+  const slot = m ? ctx.math[Number(m[1])] : null;
+  return slot?.display ? sanitizeHtml(renderMathSlot(slot)) : null;
+}
+
+function blocksFromMarkdown(text: string): ContentBlock[] {
+  const { text: mathSlotted, slots: math } = extractMathSlots(text);
+  const { text: slotted, slots: refs } = extractRefSlots(mathSlotted);
+  const ctx: SlotContext = { math, refs };
+  const tokens = md.parse(slotted, {});
+
+  const root: ContentBlock[] = [];
+  const containers: ContentBlock[][] = [root];
+  const lists: Extract<ContentBlock, { type: 'list' }>[] = [];
+  const current = () => containers[containers.length - 1];
+
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    switch (token.type) {
+      case 'heading_open': {
+        const inline = tokens[i + 1];
+        const level = Number(token.tag.slice(1)) >= 4 ? 4 : 3;
+        current().push({ type: 'heading', level, segments: inlineFromTokens(inline.children ?? [], ctx) });
+        i += 2;
+        break;
+      }
+      case 'paragraph_open': {
+        const inline = tokens[i + 1];
+        const mathHtml = displayMathOnly(inline, ctx);
+        if (mathHtml) {
+          current().push({ type: 'math', html: mathHtml });
+        } else {
+          const block: ContentBlock = { type: 'p', segments: inlineFromTokens(inline.children ?? [], ctx) };
+          if (token.hidden) block.tight = true;
+          current().push(block);
+        }
+        i += 2;
+        break;
+      }
+      case 'bullet_list_open':
+      case 'ordered_list_open': {
+        const list: Extract<ContentBlock, { type: 'list' }> = {
+          type: 'list',
+          ordered: token.type === 'ordered_list_open',
+          start: Number(token.attrGet('start') ?? 1),
+          items: [],
+        };
+        current().push(list);
+        lists.push(list);
+        break;
+      }
+      case 'bullet_list_close':
+      case 'ordered_list_close':
+        lists.pop();
+        break;
+      case 'list_item_open': {
+        const item: ContentBlock[] = [];
+        lists[lists.length - 1].items.push(item);
+        containers.push(item);
+        break;
+      }
+      case 'blockquote_open': {
+        const quote: Extract<ContentBlock, { type: 'quote' }> = { type: 'quote', blocks: [] };
+        current().push(quote);
+        containers.push(quote.blocks);
+        break;
+      }
+      case 'list_item_close':
+      case 'blockquote_close':
+        containers.pop();
+        break;
+      case 'fence':
+        current().push({ type: 'code', text: restoreMathSource(token.content.replace(/\n$/, ''), ctx) });
+        break;
+      case 'hr':
+        current().push({ type: 'hr' });
+        break;
+    }
+  }
+
+  return root;
+}
+
+/** Senza gruppi di cattura annidati (split con due gruppi alternati inserisce `undefined`) */
+const BLOCK_MARKER_RE = /<!--FORMULA:[\d.]+-->|<!--IMAGE:\{[\s\S]*?\}-->/g;
 
 function parseImageMarker(chunk: string): ContentBlock | null {
   const match = chunk.match(/<!--IMAGE:(\{[\s\S]*?\})-->/);
@@ -212,24 +322,7 @@ function parseImageMarker(chunk: string): ContentBlock | null {
   }
 }
 
-function appendMarkdownBlocks(blocks: ContentBlock[], text: string): void {
-  if (!text.trim()) return;
-
-  for (const md of splitMarkdownBlocks(text)) {
-    if (md.kind === 'h3') {
-      blocks.push({ type: 'h3', segments: parseInlineSegments(md.text) });
-    } else if (md.kind === 'ul') {
-      blocks.push({
-        type: 'ul',
-        items: md.items.map((item) => parseInlineSegments(item)),
-      });
-    } else {
-      blocks.push({ type: 'p', segments: parseInlineSegments(md.text) });
-    }
-  }
-}
-
-/** Parse smartbook body into block structure with inline refs inside paragraphs and list items */
+/** Parse smartbook body into blocks; numbered formulas and images split the markdown flow */
 export function parseContentBlocks(content: string): ContentBlock[] {
   if (!content) return [];
 
@@ -238,8 +331,12 @@ export function parseContentBlocks(content: string): ContentBlock[] {
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
+  const appendMarkdown = (text: string) => {
+    if (text.trim()) blocks.push(...blocksFromMarkdown(text));
+  };
+
   while ((match = re.exec(content)) !== null) {
-    appendMarkdownBlocks(blocks, content.slice(lastIndex, match.index));
+    appendMarkdown(content.slice(lastIndex, match.index));
 
     const marker = match[0];
     const formula = marker.match(/<!--FORMULA:([\d.]+)-->/);
@@ -253,6 +350,6 @@ export function parseContentBlocks(content: string): ContentBlock[] {
     lastIndex = re.lastIndex;
   }
 
-  appendMarkdownBlocks(blocks, content.slice(lastIndex));
+  appendMarkdown(content.slice(lastIndex));
   return blocks;
 }

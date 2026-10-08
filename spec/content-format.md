@@ -23,6 +23,7 @@ Il **reader** interpreta questi file; il **builder** li genera; **ptsb-pack** li
 9. [Validazione](#9-validazione)
 10. [Convenzioni](#10-convenzioni)
 11. [Limitazioni](#11-limitazioni)
+12. [Stampa](#12-stampa)
 
 ---
 
@@ -73,7 +74,7 @@ Vedi `politost-smartbook/src/content/esempio/` — libro dimostrativo integrato 
   "access": "public",
   "authors": ["Ada Rossi", "Luca Bianchi"],
   "version": "1.2.0",
-  "specVersion": "1.1",
+  "specVersion": "1.2",
   "sections": {
     "smartbook":  { "enabled": true, "label": "Capitoli" },
     "formulario": { "enabled": true, "label": "Formulario" },
@@ -100,7 +101,7 @@ Vedi `politost-smartbook/src/content/esempio/` — libro dimostrativo integrato 
 | `id` | Slug URL: `/libro/<id>` |
 | `title` | Titolo in header e catalogo |
 | `subject` | Badge materia in home |
-| `access` | `public` (default) o `licensed` — vedi [ptsb.md](ptsb.md) |
+| `access` | `public` (default) o `licensed` — vedi [ptsb.md](https://github.com/SuperTost100/politost-smartbook/blob/main/docs/ptsb.md) |
 | `authors` | Opzionale. Lista di nomi, nell'ordine in cui vanno mostrati. Se presente non può essere vuota |
 | `version` | Opzionale. Versione del contenuto del libro, decisa dagli autori. Consigliato semver (`1.2.0`), altrimenti il validatore dà un avviso |
 | `specVersion` | Opzionale. Versione di questo formato per cui il libro è scritto, forma `MAJOR.MINOR`. Se manca vale `1.0`. Un lettore che trova una versione più nuova della sua mostra un avviso e prova comunque ad aprire il libro |
@@ -110,14 +111,15 @@ Vedi `politost-smartbook/src/content/esempio/` — libro dimostrativo integrato 
 
 ### Versioni
 
-Questo documento descrive il formato **1.1** (file `CONTENT_FORMAT_VERSION`).
+Questo documento descrive il formato **1.2** (file `VERSION`, costante `CONTENT_FORMAT_VERSION` in content-core).
 
 | Versione | Cambiamenti |
 |----------|-------------|
+| 1.2 | Il testo dei capitoli è CommonMark (markdown-it): elenchi annidati, grassetto e corsivo negli elenchi, citazioni, blocchi di codice, linee orizzontali. Il markup lasciato dal generatore è un errore. `:::hint` mancante dà un avviso solo in `esercizi.md`. Un libro 1.1 resta valido se non contiene markup del generatore |
 | 1.1 | Campi opzionali `authors`, `version`, `specVersion` in `smartbook.json`. Un libro 1.0 resta valido senza modifiche |
 | 1.0 | Prima versione stabile |
 
-Il formato del contenuto e il formato del pacchetto sono separati. `specVersion` riguarda i file di questo documento. `formatVersion` in `ptsb.json` riguarda il contenitore `.ptsb` (vedi [ptsb.md](ptsb.md)).
+Il formato del contenuto e il formato del pacchetto sono separati. `specVersion` riguarda i file di questo documento. `formatVersion` in `ptsb.json` riguarda il contenitore `.ptsb` (vedi [ptsb.md](https://github.com/SuperTost100/politost-smartbook/blob/main/docs/ptsb.md)).
 
 ---
 
@@ -152,9 +154,28 @@ Testo del paragrafo…
 
 ### Testo e formule inline
 
-- **Grassetto**: `**testo**` — lasciare uno spazio prima e dopo i delimitatori `**` se adiacenti a parole (es. `Un **campo** è…`, non `Un**campo**è…`)
+Il testo dentro un paragrafo è [CommonMark](https://spec.commonmark.org/), letto con markdown-it (content-core 0.3.0 e successivi). Formule, `{{formula:…}}` e link `ref:` vengono tolti dal testo prima del parsing, quindi `*` e `_` dentro una formula non diventano corsivo.
+
+| Sintassi | Resa |
+|----------|------|
+| `**testo**` | Grassetto |
+| `*testo*` o `_testo_` | Corsivo |
+| `` `codice` `` | Codice inline |
+| `- voce`, `1. voce` | Elenco puntato o numerato. Rientro di due o tre spazi per un elenco annidato. Grassetto, corsivo e formule funzionano dentro le voci |
+| `> testo` | Citazione |
+| ` ``` ` | Blocco di codice (solo recintato; il codice rientrato è disattivato) |
+| `---` su una riga, fra righe vuote | Linea orizzontale |
+| `### Titolo`, `#### Titolo` | Sottotitolo dentro il paragrafo. `#` e `##` (senza `pN \|`) diventano `###`; `#####` e `######` diventano `####` |
+| `[testo](https://…)` | Link esterno. Ammessi solo `http:`, `https:`, `mailto:` |
+
+Un elenco numerato interrotto da una formula display riprende dal numero indicato (`3.` dopo `2.` e la formula).
+
+Formule:
+
 - Inline: `$E = mc^2$`
 - Display: `$$\int_0^1 x\,dx$$`
+
+Lasciare uno spazio prima e dopo `**` quando tocca una parola (`Un **campo** è…`, non `Un**campo**è…`). CommonMark non chiude il grassetto se `**` sta fra punteggiatura e una lettera: `**campo:**è` resta testo con gli asterischi.
 
 ### Formule numerate
 
@@ -230,6 +251,8 @@ Soluzione passo passo.
 
 `:::hint` e `:::solution` sono annidati dentro `:::exercise`.
 
+`:::hint` è facoltativo in entrambi i file. Il validatore avvisa se manca in `esercizi.md`, non in `esami.md`: le prove d'esame si esercitano come il giorno del compito, senza suggerimenti. `:::solution` mancante dà un avviso in entrambi.
+
 ---
 
 ## 6. Laboratorio (ide.json)
@@ -288,7 +311,7 @@ Configurazione `data` + `layout` Plotly nativa (barre, scatter, ecc.).
 2. Scrivi `smartbook.json` e almeno un capitolo `.md`
 3. Aggiungi file ausiliari (`esercizi.md` vuoto, `ide.json` → `[]`, …) se le sezioni sono abilitate
 4. `npm run dev` nel viewer — la cartella viene scoperta automaticamente (`import.meta.glob`)
-5. Opzionale: `npm run pack:ptsb` — vedi [ptsb.md](ptsb.md)
+5. Opzionale: `npm run pack:ptsb` — vedi [ptsb.md](https://github.com/SuperTost100/politost-smartbook/blob/main/docs/ptsb.md)
 
 L’URL usa `id` in `smartbook.json`, non il nome cartella.
 
@@ -303,9 +326,16 @@ npm run validate:chapter -- \
   --chapter-number 2
 ```
 
-Controlla: paragrafi `## pN |`, formule con `id` coerente, chiusura blocchi `:::`, immagini con `alt`.
+Il validatore è `validateChapter` / `validateBundle` in content-core (`packages/content-core/src/validateChapter.ts`). Tra gli errori:
 
-Il builder invoca lo stesso validatore dopo la generazione AI.
+- paragrafi senza `## pN |`, formule con `id` incoerente, blocchi `:::` non chiusi;
+- immagini senza `alt`, fuori da `assets/` o mancanti nel pacchetto;
+- capitoli elencati in `smartbook.json` ma assenti, `id` non valido, metadati 1.1 con forma sbagliata;
+- **markup del generatore** in un capitolo, in `esercizi.md` o in `esami.md`: tag rimasti dall'output di un modello, come `</markdown>`, `</invoke>`, `<parameter name="…">`, `<function_calls>`, `antml:*`, `tool_use`, `tool_result`. È un errore in tutti i profili (`dev` e `ship`). Chi produce i file deve toglierli prima di esportare.
+
+Il profilo `dev` riporta come avvisi molti controlli che `ship` tratta come errori. Il markup del generatore è un errore in entrambi. L'elenco completo è nei test di content-core.
+
+`ptsb-pack validate` e `ptsb-pack pack` rifiutano lo stesso markup del generatore e le immagini mancanti. Il builder invoca il validatore di content-core dopo la generazione.
 
 ---
 
@@ -323,43 +353,17 @@ Il builder invoca lo stesso validatore dopo la generazione AI.
 
 | Area | Limite |
 |------|--------|
-| Markdown | No tabelle; immagini solo in `assets/` |
+| Markdown | No tabelle, no HTML (il testo `<…>` resta testo), no codice rientrato. Immagini solo con `:::image` e solo da `assets/` |
 | Python | No import numpy/matplotlib preconfigurati negli snippet |
 | MATLAB | Sottoinsieme didattico (no `for`, matrici, funzioni utente) |
 | i18n contenuti | Nessuna — l’UI viewer è in italiano |
 
-Per limiti del viewer (upload, DRM, stampa): [reader.md](reader.md).
+Per limiti del viewer (upload, DRM, stampa): [reader.md](https://github.com/SuperTost100/politost-smartbook/blob/main/docs/reader.md).
 
 ---
 
-## 12. Print CSS contract (appendix)
+## 12. Stampa
 
-Anteprima stampa (`politost-smartbook/src/print/`) impagina contenuto in un iframe isolato con Paged.js.
+Il contenuto decide solo **cosa** si può stampare: `chapters[].printable` in `smartbook.json` e `printable: true` nel frontmatter di `esercizi.md` / `esami.md`. Laboratorio e grafici non si stampano.
 
-### Stylesheet stack (iframe)
-
-In ordine: KaTeX → `document.css` → `paged.css`. `tokens.css` è importato da `document.css`.
-
-| File | Ruolo |
-|------|-------|
-| `tokens.css` | Variabili tipografia, margini pagina A4, colori inchiostro/carta |
-| `document.css` | Layout contenuto: `.print-flow`, paragrafi, formule, esercizi, figure |
-| `paged.css` | `@page`, running heads (`string-set` da `.print-meta`), footer Politost, watermark |
-
-### DOM contract
-
-| Classe / attributo | Uso |
-|--------------------|-----|
-| `.print-root` > `.print-meta` | `data-book-title`, `data-section-title` per running heads |
-| `.print-brand-block` | Apertura documento (wordmark + titolo) |
-| `.print-flow` | Corpo paginato — unico nodo passato a Paged.js |
-| `.print-chunk[data-chunk-id]` | Blocchi per deduplica post-paginazione |
-| `.numbered-formula[data-formula-id]` | Formule numerate; id univoci su tutte le pagine |
-| `.paragraph-title` | Titoli paragrafo; deduplica su page break |
-
-Dopo la paginazione, `.print-root` e `.print-flow` **non** devono restare nel DOM iframe (solo `.pagedjs_pages`).
-
-### Shell (viewer)
-
-`shell.css` resta nel viewer: toolbar, loading screen, canvas — fuori dall'iframe.
-
+Come il reader impagina la stampa (foglio A4 unico, intestazioni e numeri di pagina nei margini `@page`, inchiostro su bianco) è un dettaglio del reader, non del formato: vedi [Print.md](https://github.com/SuperTost100/politost-smartbook/blob/main/docs/Print.md). Nella stampa suggerimenti e soluzioni sono sempre visibili e i link interni stampano la destinazione (`§1.6`, `(2.3)`).

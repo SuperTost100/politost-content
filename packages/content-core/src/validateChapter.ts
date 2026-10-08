@@ -20,6 +20,8 @@ const SHORTHAND_FORMULA = /^:::formula\{(?![^}]*\bid=)[^}]+\}\s*$/gm;
 const META_HEADING = /(Riepilogo|Sintesi|Sommario|Riassunto)\s+del\s+lavoro\s+svolto/i;
 const META_LINE =
   /(Il testo sorgente è stato|Ho riscritto|Sono stati inseriti \d+ blocchi|NON includere)/i;
+/** Tool-call / wrapper tags a generator leaked into the text (e.g. `</markdown>`, `</invoke>`). */
+const TOOL_MARKUP = /<\/?(?:markdown|invoke|parameter|function_calls|antml:[\w-]+|tool_use|tool_result)(?=[\s/>])[^>]*>/i;
 
 export type ValidateProfile = 'ship' | 'dev';
 
@@ -104,6 +106,14 @@ function validateImagesInContent(
         strict,
       );
     }
+  }
+}
+
+/** Always an error, in every profile: leaked markup means the generator output was not cleaned. */
+function validateNoToolMarkup(raw: string, context: string, errors: string[]): void {
+  for (const [i, line] of raw.split('\n').entries()) {
+    const m = line.match(TOOL_MARKUP);
+    if (m) errors.push(`${context}, riga ${i + 1}: markup del generatore non rimosso "${m[0]}"`);
   }
 }
 
@@ -206,6 +216,7 @@ export function validateChapter(
 
   validateImagesInContent(raw, 'Capitolo', errors, warnings, strict, availableAssets);
   validateContentQuality(raw, errors, warnings, strict);
+  validateNoToolMarkup(raw, 'Capitolo', errors);
 
   const formulaOpenRe = new RegExp(CANONICAL_FORMULA_OPEN.source, 'gm');
   const openCount = [...raw.matchAll(formulaOpenRe)].length;
@@ -352,12 +363,14 @@ export function validateBundle(
 
   if (extras.eserciziRaw) {
     validateImagesInContent(extras.eserciziRaw, 'esercizi.md', errors, warnings, strict, availableAssets);
+    validateNoToolMarkup(extras.eserciziRaw, 'esercizi.md', errors);
     const ex = validateExercises(extras.eserciziRaw, 'esercizi');
     errors.push(...ex.errors.map((e) => `esercizi.md: ${e}`));
     warnings.push(...ex.warnings.map((w) => `esercizi.md: ${w}`));
   }
   if (extras.esamiRaw) {
     validateImagesInContent(extras.esamiRaw, 'esami.md', errors, warnings, strict, availableAssets);
+    validateNoToolMarkup(extras.esamiRaw, 'esami.md', errors);
     const ex = validateExercises(extras.esamiRaw, 'esami');
     errors.push(...ex.errors.map((e) => `esami.md: ${e}`));
     warnings.push(...ex.warnings.map((w) => `esami.md: ${w}`));

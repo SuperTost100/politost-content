@@ -1,5 +1,5 @@
 /** Content-format version this package reads and writes. Bump together with the spec's VERSION file. */
-export const CONTENT_FORMAT_VERSION = '1.1';
+export const CONTENT_FORMAT_VERSION = '1.2';
 
 const SPEC_RE = /^(\d+)\.(\d+)$/;
 const SEMVER_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
