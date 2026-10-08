@@ -60,7 +60,7 @@ npm install https://github.com/SuperTost100/politost-content/releases/download/c
 ptsb-pack, pinned to a tag:
 
 ```bash
-pip install "git+https://github.com/SuperTost100/politost-content.git@ptsb-pack-v1.1.0#subdirectory=packages/ptsb-pack"
+pip install "git+https://github.com/SuperTost100/politost-content.git@ptsb-pack-v1.2.0#subdirectory=packages/ptsb-pack"
 ```
 
 Consumers: the [reader](https://github.com/SuperTost100/politost-smartbook) keeps a copy in `packages/content-core`, Smart Builder pins the tarball URL, Pyxis vendors the tarball, the platform vendors ptsb-pack.

@@ -9,10 +9,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
+from ptsb_pack import __version__
 from ptsb_pack.crypto import build_encrypted_container
 from ptsb_pack.validate import allowed_bundle_files, load_smartbook_config
 
 Access = Literal["public", "licensed"]
+
+# content-core's PTSB_ZIP_LIMITS: the reader refuses archives over these.
+MAX_ZIP_FILES = 200
+MAX_ZIP_FILE_BYTES = 5 * 1024 * 1024
+MAX_ZIP_BYTES = 50 * 1024 * 1024
+TEXT_SUFFIXES = (".md", ".json")
 
 
 def _read_member(bundle_dir: Path, rel: str) -> bytes:
@@ -23,7 +30,13 @@ def _read_member(bundle_dir: Path, rel: str) -> bytes:
     root = bundle_dir.resolve()
     if not resolved.is_relative_to(root):
         raise ValueError(f"percorso fuori dal bundle: {rel}")
-    return resolved.read_bytes()
+    data = resolved.read_bytes()
+    if rel.endswith(TEXT_SUFFIXES):
+        # LF only, like the files the reader's own tools write.
+        data = data.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n").encode("utf-8")
+    if len(data) > MAX_ZIP_FILE_BYTES:
+        raise ValueError(f"{rel}: file troppo grande ({len(data)} byte, max {MAX_ZIP_FILE_BYTES})")
+    return data
 
 
 def build_inner_zip(bundle_dir: Path, *, access: Access) -> bytes:
@@ -37,15 +50,25 @@ def build_inner_zip(bundle_dir: Path, *, access: Access) -> bytes:
             "encrypted": False,
             "access": access,
             "createdAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-            "producer": "ptsb-pack/1.0",
+            "producer": f"ptsb-pack/{__version__}",
         }
         zf.writestr("ptsb.json", json.dumps(ptsb_manifest, indent=2))
-        zf.writestr("smartbook.json", json.dumps(packed_config, ensure_ascii=False, indent=2))
-        for rel in allowed_bundle_files(bundle_dir):
+        config_json = json.dumps(packed_config, ensure_ascii=False, indent=2).encode("utf-8")
+        if len(config_json) > MAX_ZIP_FILE_BYTES:
+            raise ValueError(f"smartbook.json troppo grande ({len(config_json)} byte, max {MAX_ZIP_FILE_BYTES})")
+        zf.writestr("smartbook.json", config_json)
+        files = allowed_bundle_files(bundle_dir)
+        # ptsb.json and smartbook.json are written above; smartbook.json is also in files.
+        if len(files) + 1 > MAX_ZIP_FILES:
+            raise ValueError(f"Troppi file nel pacchetto ({len(files) + 1}, max {MAX_ZIP_FILES})")
+        for rel in files:
             if rel == "smartbook.json":
                 continue
             zf.writestr(rel, _read_member(bundle_dir, rel))
-    return buf.getvalue()
+    data = buf.getvalue()
+    if len(data) > MAX_ZIP_BYTES:
+        raise ValueError(f"Pacchetto troppo grande ({len(data)} byte, max {MAX_ZIP_BYTES})")
+    return data
 
 
 def pack_plain(bundle_dir: Path, *, access: Access = "public") -> bytes:
