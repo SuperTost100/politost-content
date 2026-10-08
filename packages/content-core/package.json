@@ -4,7 +4,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/SuperTost100/politost-content-core.git",
+    "url": "https://github.com/SuperTost100/politost-content.git",
     "directory": "packages/content-core"
   },
   "type": "module",
