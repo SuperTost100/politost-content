@@ -8,20 +8,20 @@ Everything that defines and handles a Politost smartbook outside the reader: the
 | [`packages/content-core/`](packages/content-core) | `@politost/content-core`: parser, renderer, validators, `.ptsb` reader | MIT | npm tarball on each `content-core-v*` release |
 | [`packages/ptsb-pack/`](packages/ptsb-pack) | `ptsb-pack` CLI: validate, pack, encrypt and inspect `.ptsb` files | AGPL-3.0 | `pip install` from a tag |
 
-Until October 2026 these were three repositories. `politost-content-format` and `politost-ptsb-pack` were merged here with their history. Their old commits sit behind the import merges, so `git log -- spec` does not reach them. Use `git log 21dfcac^2` (content-format) and `git log eb7e5e6^2` (ptsb-pack).
+Until October 2026 these were three repositories. This one was called `politost-content-core`, and GitHub redirects the old name. `politost-content-format` and `politost-ptsb-pack` were merged into it with their history. Their old commits sit behind the import merges, so `git log -- spec` does not reach them. Use `git log 21dfcac^2` (content-format) and `git log eb7e5e6^2` (ptsb-pack).
 
 ## Using it
 
 content-core, pinned to a release tarball:
 
 ```bash
-npm install https://github.com/SuperTost100/politost-content-core/releases/download/content-core-v0.3.1/politost-content-core-0.3.1.tgz
+npm install https://github.com/SuperTost100/politost-content/releases/download/content-core-v0.3.1/politost-content-core-0.3.1.tgz
 ```
 
 ptsb-pack, pinned to a tag:
 
 ```bash
-pip install "git+https://github.com/SuperTost100/politost-content-core.git@ptsb-pack-v1.1.0#subdirectory=packages/ptsb-pack"
+pip install "git+https://github.com/SuperTost100/politost-content.git@ptsb-pack-v1.1.0#subdirectory=packages/ptsb-pack"
 ```
 
 Consumers: the [reader](https://github.com/SuperTost100/politost-smartbook) keeps a copy in `packages/content-core`, Smart Builder pins the tarball URL, Pyxis vendors the tarball, the platform vendors ptsb-pack.
