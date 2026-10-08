@@ -183,3 +183,62 @@ def test_rejects_generator_markup_in_esami(tmp_path: Path) -> None:
 def test_allows_angle_brackets_in_prose_and_math(tmp_path: Path) -> None:
     _write_bundle(tmp_path, chapter_md="## p1 | Intro\n\nSe $a<b$ e $c>d$, il <markdown-it> parser non conta: <parameters>.\n")
     load_smartbook_config(tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("rel", "size", "pattern"),
+    [
+        ("assets/fig.gif", 10, "formato immagine non ammesso"),
+        ("assets/my fig.png", 10, "percorso immagine non valido"),
+        ("assets/big.png", 2 * 1024 * 1024 + 1, "immagine troppo grande"),
+    ],
+)
+def test_rejects_assets_the_reader_refuses(tmp_path: Path, rel: str, size: int, pattern: str) -> None:
+    _write_bundle(
+        tmp_path,
+        chapter_md=f'## p1 | Intro\n\n:::image{{src="{rel}" alt="Fig"}}\n:::\n',
+        assets={rel: b"\0" * size},
+    )
+    with pytest.raises(ValueError, match=pattern):
+        load_smartbook_config(tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("chapters", "pattern"),
+    [
+        ([{"file": "ch01.md", "number": 1}, {"file": "ch01.md", "number": 2}], "file ripetuto"),
+        ([{"file": "ch01.md", "number": "1"}], "intero positivo"),
+        (["ch01.md"], "non è un oggetto"),
+    ],
+)
+def test_rejects_bad_chapter_entries(tmp_path: Path, chapters: list, pattern: str) -> None:
+    _write_bundle(tmp_path, chapter_md="## p1 | Intro\n", meta={"chapters": chapters})
+    with pytest.raises(ValueError, match=pattern):
+        load_smartbook_config(tmp_path)
+
+
+def test_cli_reports_non_object_config_without_traceback(tmp_path: Path) -> None:
+    (tmp_path / "smartbook.json").write_text("[]", encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, "-m", "ptsb_pack.cli", "validate", str(tmp_path)],
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+    )
+    assert result.returncode == 1
+    assert "atteso un oggetto JSON" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
+def test_pack_writes_lf_and_the_package_version(tmp_path: Path) -> None:
+    import io
+    import zipfile
+
+    from ptsb_pack import __version__
+    from ptsb_pack.pack import pack_plain
+
+    _write_bundle(tmp_path, chapter_md="## p1 | Intro\n\nTesto.\n")
+    (tmp_path / "chapters" / "ch01.md").write_bytes(b"## p1 | Intro\r\n\r\nTesto.\r\n")
+    with zipfile.ZipFile(io.BytesIO(pack_plain(tmp_path))) as zf:
+        assert zf.read("chapters/ch01.md") == b"## p1 | Intro\n\nTesto.\n"
+        assert json.loads(zf.read("ptsb.json"))["producer"] == f"ptsb-pack/{__version__}"

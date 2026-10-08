@@ -7,7 +7,7 @@ Spec: [`spec/content-format.md`](../../spec/content-format.md) · Dettaglio bina
 ## Installazione
 
 ```bash
-pip install "git+https://github.com/SuperTost100/politost-content.git@ptsb-pack-v1.1.0#subdirectory=packages/ptsb-pack"
+pip install "git+https://github.com/SuperTost100/politost-content.git@ptsb-pack-v1.2.0#subdirectory=packages/ptsb-pack"
 # oppure, da un clone
 pip install -e packages/ptsb-pack
 ```

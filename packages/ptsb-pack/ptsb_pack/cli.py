@@ -47,8 +47,6 @@ def main() -> None:
             if args.encrypt and not secret:
                 secret = os.environ.get("PTSB_MASTER_SECRET", "")
             access = "licensed" if args.encrypt else args.access
-            if args.encrypt:
-                access = "licensed"
             pack_to_file(
                 args.dir,
                 args.out,

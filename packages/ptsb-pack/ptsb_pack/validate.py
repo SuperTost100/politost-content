@@ -16,6 +16,13 @@ IMAGE_SRC = re.compile(r'src="([^"]+)"')
 GRAFICO_TYPES = {"function", "plotly"}
 IDE_FIELDS = ("id", "title", "language", "code")
 SPEC_VERSION_RE = re.compile(r"^\d+\.\d+$")
+# Asset and archive limits enforced by content-core when it opens a package
+# (assetResolver.ts and PTSB_ZIP_LIMITS in ptsb.ts). Packing a book over them
+# gives a file the reader refuses.
+ASSET_PATH_RE = re.compile(r"^assets/[a-zA-Z0-9._/-]+$")
+ASSET_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".svg"}
+MAX_ASSET_BYTES = 2 * 1024 * 1024
+MAX_BOOK_ASSETS_BYTES = 20 * 1024 * 1024
 # Same pattern as TOOL_MARKUP in content-core's validateChapter.ts.
 TOOL_MARKUP = re.compile(
     r"</?(?:markdown|invoke|parameter|function_calls|antml:[\w-]+|tool_use|tool_result)(?=[\s/>])[^>]*>", re.I
@@ -58,6 +65,36 @@ def _check_json_extra(name: str, data: object) -> None:
                 raise ValueError(f"ide.json[{i}]: snippet non valido")
 
 
+def _check_chapters(chapters: object) -> None:
+    """Same rules as validateBundle in content-core: one entry per file and number."""
+    if not isinstance(chapters, list) or not chapters:
+        raise ValueError("Nessun capitolo in smartbook.json")
+    seen: dict[str, set] = {"id": set(), "number": set(), "file": set()}
+    for i, ch in enumerate(chapters):
+        if not isinstance(ch, dict):
+            raise ValueError(f"smartbook.json: chapters[{i}] non è un oggetto")
+        if not isinstance(ch.get("file"), str) or not ch["file"]:
+            raise ValueError("Capitolo senza campo file")
+        number = ch.get("number")
+        if not isinstance(number, int) or isinstance(number, bool) or number < 1:
+            raise ValueError(f"smartbook.json: chapters[{i}].number deve essere un intero positivo, trovato {number!r}")
+        for key in ("id", "number", "file"):
+            if key not in ch:
+                continue
+            if ch[key] in seen[key]:
+                raise ValueError(f"smartbook.json: {key} ripetuto in chapters: {ch[key]}")
+            seen[key].add(ch[key])
+
+
+def _check_asset(path: str, size: int) -> None:
+    if not ASSET_PATH_RE.match(path) or ".." in path:
+        raise ValueError(f"percorso immagine non valido: {path}")
+    if Path(path).suffix.lower() not in ASSET_EXTENSIONS:
+        raise ValueError(f"formato immagine non ammesso: {path} (usa {', '.join(sorted(ASSET_EXTENSIONS))})")
+    if size > MAX_ASSET_BYTES:
+        raise ValueError(f"{path}: immagine troppo grande ({size} byte, max {MAX_ASSET_BYTES})")
+
+
 def _check_book_meta(config: dict) -> None:
     """Optional metadata from content format 1.1. Same rules as validateBookMeta in content-core."""
     if "authors" in config:
@@ -91,13 +128,13 @@ def _markdown_files(bundle_dir: Path, chapters: list[dict]) -> list[Path]:
 def _required_assets(bundle_dir: Path, md_files: list[Path]) -> list[str]:
     required: list[str] = []
     assets_dir = bundle_dir / "assets"
-    available: set[str] = set()
+    available: dict[str, int] = {}
     if assets_dir.is_dir():
         for path in assets_dir.rglob("*"):
             if not path.is_file():
                 continue
             resolved = _inside(bundle_dir, path, path.name)
-            available.add(f"assets/{resolved.relative_to(assets_dir.resolve()).as_posix()}")
+            available[f"assets/{resolved.relative_to(assets_dir.resolve()).as_posix()}"] = resolved.stat().st_size
 
     for md in md_files:
         raw = md.read_text(encoding="utf-8")
@@ -116,8 +153,12 @@ def _required_assets(bundle_dir: Path, md_files: list[Path]) -> list[str]:
                 raise ValueError(f"{md.name}: percorso immagine non valido: {path}")
             if path not in available:
                 raise ValueError(f"{md.name}: asset mancante: {path}")
+            _check_asset(path, available[path])
             if path not in required:
                 required.append(path)
+    total = sum(available[path] for path in required)
+    if total > MAX_BOOK_ASSETS_BYTES:
+        raise ValueError(f"Totale immagini troppo grande ({total} byte, max {MAX_BOOK_ASSETS_BYTES})")
     return required
 
 
@@ -126,21 +167,20 @@ def load_smartbook_config(bundle_dir: Path) -> dict:
     if not path.is_file():
         raise ValueError("smartbook.json mancante")
     config = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(config, dict):
+        raise ValueError("smartbook.json: atteso un oggetto JSON")
     book_id = config.get("id", "")
-    if not ID_RE.match(book_id):
+    if not isinstance(book_id, str) or not ID_RE.match(book_id):
         raise ValueError(f"id smartbook non valido: {book_id!r}")
     chapters = config.get("chapters", [])
-    if not chapters:
-        raise ValueError("Nessun capitolo in smartbook.json")
+    _check_chapters(chapters)
     _check_book_meta(config)
     chapters_dir = bundle_dir / "chapters"
     if not chapters_dir.is_dir():
         raise ValueError("Cartella chapters/ mancante")
     named: set[str] = set()
     for ch in chapters:
-        fname = ch.get("file")
-        if not fname:
-            raise ValueError("Capitolo senza campo file")
+        fname = ch["file"]
         named.add(Path(fname).as_posix())
         raw = _chapter_file(chapters_dir, fname).read_text(encoding="utf-8")
         if not PARA_HEADER.search(raw):
