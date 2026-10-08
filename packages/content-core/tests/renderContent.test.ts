@@ -208,6 +208,15 @@ describe('parseContentBlocks', () => {
     assert.match(textOf(link.children), /class="katex"/);
   });
 
+  it('does not pair a $ in label code with math after it', async () => {
+    const { parseInlineSegments } = await load();
+    const segments = parseInlineSegments('[[link:ref:chapter/1#p2|`echo $HOME` e $x$]]');
+    const link = segments.find((s) => s.type === 'link');
+    assert.ok(link && link.type === 'link');
+    assert.match(textOf(link.children), /<code>echo \$HOME<\/code>/);
+    assert.match(textOf(link.children), /class="katex"/);
+  });
+
   it('keeps math inside a link label', async () => {
     const { parseInlineSegments } = await load();
     const segments = parseInlineSegments('Vedi [[link:ref:formula/1.1|la $x^2$]] e $y$.');

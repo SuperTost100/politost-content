@@ -43,7 +43,7 @@ function extractRefSlots(text: string, math: MathSlot[], slots: RefSlot[] = []):
       slots.push(
         formulaId
           ? { kind: 'hover', formulaId, source }
-          : { kind: 'link', ref: ref!, label: extractMathSlots(label!, math).text, source },
+          : { kind: 'link', ref: ref!, label: extractMathOutsideCode(label!, math), source },
       );
       return `${REF_SLOT}${slots.length - 1}${REF_SLOT}`;
     },
@@ -65,14 +65,17 @@ const CODE_RE =
 function extractSlots(text: string): { text: string; ctx: SlotContext } {
   const ctx: SlotContext = { math: [], refs: [] };
   const withRefs = extractRefSlots(text, ctx.math, ctx.refs).text;
+  return { text: extractMathOutsideCode(withRefs, ctx.math), ctx };
+}
 
+function extractMathOutsideCode(text: string, math: MathSlot[]): string {
   let out = '';
   let last = 0;
-  for (const code of withRefs.matchAll(CODE_RE)) {
-    out += extractMathSlots(withRefs.slice(last, code.index), ctx.math).text + code[0];
+  for (const code of text.matchAll(CODE_RE)) {
+    out += extractMathSlots(text.slice(last, code.index), math).text + code[0];
     last = code.index + code[0].length;
   }
-  return { text: out + extractMathSlots(withRefs.slice(last), ctx.math).text, ctx };
+  return out + extractMathSlots(text.slice(last), math).text;
 }
 
 /** Put the original text back for any slot markdown-it still placed inside code */
