@@ -1,6 +1,45 @@
 # Politost content
 
-Everything that defines and handles a Politost smartbook outside the reader: the format spec, the TypeScript parser and validator, and the Python pack CLI.
+A smartbook is an interactive textbook written in Markdown: chapters with numbered formulas, exercises with hints and solutions, past exam questions, Python snippets and graphs. This repository defines the format and holds the code that reads it, checks it and packs it into a `.ptsb` file.
+
+[![CI](https://img.shields.io/github/actions/workflow/status/SuperTost100/politost-content/ci.yml?branch=main&label=checks)](https://github.com/SuperTost100/politost-content/actions/workflows/ci.yml)
+
+The [Smartbook reader](https://github.com/SuperTost100/politost-smartbook) and [Pyxis](https://github.com/SuperTost100/politost-pyxis) open `.ptsb` files, and [Smart Builder](https://github.com/SuperTost100/politost-smartbook-builder) writes them.
+
+## What a smartbook looks like
+
+A book is a folder:
+
+```text
+analisi-1/
+├── smartbook.json       # title, chapters, format version
+├── chapters/
+│   ├── 01-numeri-reali.md
+│   └── ...
+├── esercizi.md          # optional: exercises
+├── esami.md             # optional: past exam questions
+├── ide.json             # optional: Python lab
+├── grafici.json         # optional: graphs
+└── assets/              # optional: images
+```
+
+A chapter is Markdown with a few `:::` blocks:
+
+```markdown
+## p1 | Velocità
+
+La velocità media è lo spazio percorso diviso il tempo:
+
+:::formula{id="1.1" label="Velocità media"}
+$$v = \frac{s}{t}$$
+:::
+
+Come nella {{formula:1.1}}, si ottiene…
+```
+
+The [full spec](spec/content-format.md) covers every block, the validation rules and the `.ptsb` package. It's in Italian, like the books.
+
+## What's here
 
 | Directory | What it is | License | Released as |
 |-----------|------------|---------|-------------|
@@ -49,3 +88,7 @@ The release workflow checks the tag against `package.json`, runs the tests and a
 ptsb-pack: bump `version` in `packages/ptsb-pack/pyproject.toml`, merge, then push a `ptsb-pack-v<version>` tag. pip installs straight from the tag.
 
 Tags `v0.1.0` to `v0.2.1` are content-core releases from before the merge.
+
+## License
+
+Each part carries its own license: the spec and ptsb-pack are [AGPL-3.0](spec/LICENSE), and content-core is [MIT](packages/content-core/LICENSE) so other apps can embed the parser. Books written in the format belong to their authors.
