@@ -53,7 +53,10 @@ def build_inner_zip(bundle_dir: Path, *, access: Access) -> bytes:
             "producer": f"ptsb-pack/{__version__}",
         }
         zf.writestr("ptsb.json", json.dumps(ptsb_manifest, indent=2))
-        zf.writestr("smartbook.json", json.dumps(packed_config, ensure_ascii=False, indent=2))
+        config_json = json.dumps(packed_config, ensure_ascii=False, indent=2).encode("utf-8")
+        if len(config_json) > MAX_ZIP_FILE_BYTES:
+            raise ValueError(f"smartbook.json troppo grande ({len(config_json)} byte, max {MAX_ZIP_FILE_BYTES})")
+        zf.writestr("smartbook.json", config_json)
         files = allowed_bundle_files(bundle_dir)
         # ptsb.json and smartbook.json are written above; smartbook.json is also in files.
         if len(files) + 1 > MAX_ZIP_FILES:

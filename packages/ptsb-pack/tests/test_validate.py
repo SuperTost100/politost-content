@@ -209,6 +209,7 @@ def test_rejects_assets_the_reader_refuses(tmp_path: Path, rel: str, size: int, 
         ([{"file": "ch01.md", "number": 1}, {"file": "ch01.md", "number": 2}], "file ripetuto"),
         ([{"file": "ch01.md", "number": "1"}], "intero positivo"),
         (["ch01.md"], "non è un oggetto"),
+        ([{"file": "ch01.md", "number": 1, "id": []}, {"file": "ch02.md", "number": 2, "id": []}], "id ripetuto"),
     ],
 )
 def test_rejects_bad_chapter_entries(tmp_path: Path, chapters: list, pattern: str) -> None:
@@ -242,3 +243,8 @@ def test_pack_writes_lf_and_the_package_version(tmp_path: Path) -> None:
     with zipfile.ZipFile(io.BytesIO(pack_plain(tmp_path))) as zf:
         assert zf.read("chapters/ch01.md") == b"## p1 | Intro\n\nTesto.\n"
         assert json.loads(zf.read("ptsb.json"))["producer"] == f"ptsb-pack/{__version__}"
+
+
+def test_accepts_a_chapter_number_written_as_1_0(tmp_path: Path) -> None:
+    _write_bundle(tmp_path, chapter_md="## p1 | Intro\n", meta={"chapters": [{"file": "ch01.md", "number": 1.0}]})
+    assert load_smartbook_config(tmp_path)["chapters"][0]["number"] == 1

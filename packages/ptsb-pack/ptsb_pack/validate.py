@@ -69,21 +69,24 @@ def _check_chapters(chapters: object) -> None:
     """Same rules as validateBundle in content-core: one entry per file and number."""
     if not isinstance(chapters, list) or not chapters:
         raise ValueError("Nessun capitolo in smartbook.json")
-    seen: dict[str, set] = {"id": set(), "number": set(), "file": set()}
+    seen: dict[str, set[str]] = {"id": set(), "number": set(), "file": set()}
     for i, ch in enumerate(chapters):
         if not isinstance(ch, dict):
             raise ValueError(f"smartbook.json: chapters[{i}] non è un oggetto")
         if not isinstance(ch.get("file"), str) or not ch["file"]:
             raise ValueError("Capitolo senza campo file")
         number = ch.get("number")
-        if not isinstance(number, int) or isinstance(number, bool) or number < 1:
+        # JSON 1.0 is an integer for content-core (Number.isInteger), so accept it here too.
+        if isinstance(number, bool) or not isinstance(number, (int, float)) or number != int(number) or number < 1:
             raise ValueError(f"smartbook.json: chapters[{i}].number deve essere un intero positivo, trovato {number!r}")
         for key in ("id", "number", "file"):
             if key not in ch:
                 continue
-            if ch[key] in seen[key]:
-                raise ValueError(f"smartbook.json: {key} ripetuto in chapters: {ch[key]}")
-            seen[key].add(ch[key])
+            value = int(ch[key]) if key == "number" else ch[key]
+            seen_key = json.dumps(value, sort_keys=True)
+            if seen_key in seen[key]:
+                raise ValueError(f"smartbook.json: {key} ripetuto in chapters: {value}")
+            seen[key].add(seen_key)
 
 
 def _check_asset(path: str, size: int) -> None:
