@@ -8,7 +8,7 @@ Everything that defines and handles a Politost smartbook outside the reader: the
 | [`packages/content-core/`](packages/content-core) | `@politost/content-core`: parser, renderer, validators, `.ptsb` reader | MIT | npm tarball on each `content-core-v*` release |
 | [`packages/ptsb-pack/`](packages/ptsb-pack) | `ptsb-pack` CLI: validate, pack, encrypt and inspect `.ptsb` files | AGPL-3.0 | `pip install` from a tag |
 
-Until October 2026 these were three repositories. `politost-content-format` and `politost-ptsb-pack` were merged here with their history.
+Until October 2026 these were three repositories. `politost-content-format` and `politost-ptsb-pack` were merged here with their history. Their old commits sit behind the import merges, so `git log -- spec` does not reach them. Use `git log 21dfcac^2` (content-format) and `git log eb7e5e6^2` (ptsb-pack).
 
 ## Using it
 
