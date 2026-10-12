@@ -54,7 +54,7 @@ Until October 2026 these were three repositories. This one was called `politost-
 content-core, pinned to a release tarball:
 
 ```bash
-npm install https://github.com/SuperTost100/politost-content/releases/download/content-core-v0.4.0/politost-content-core-0.4.0.tgz
+npm install https://github.com/SuperTost100/politost-content/releases/download/content-core-v0.5.0/politost-content-core-0.5.0.tgz
 ```
 
 ptsb-pack, pinned to a tag:

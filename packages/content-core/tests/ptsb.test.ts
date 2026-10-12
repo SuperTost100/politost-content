@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { strToU8, zipSync } from 'fflate';
-import { ptsbKind, readPtsb, readPtsbManifest, safeUnzip, PTSB_ZIP_LIMITS } from '../src/ptsb.ts';
+import { packBook, ptsbKind, readPtsb, readPtsbManifest, safeUnzip, PTSB_ZIP_LIMITS } from '../src/ptsb.ts';
 
 const CONFIG = {
   id: 'demo-book',
@@ -131,5 +131,37 @@ describe('readPtsbManifest', () => {
   it('returns the manifest, or null for non-zip input', () => {
     assert.equal(readPtsbManifest(pack(VALID_FILES))?.producer, 'test');
     assert.equal(readPtsbManifest(strToU8('PTSB')), null);
+  });
+});
+
+describe('packBook', () => {
+  const files = (extra: Record<string, string> = {}) =>
+    Object.fromEntries(
+      Object.entries({ ...VALID_FILES, ...extra }).map(([name, value]) => [name, strToU8(value)]),
+    );
+
+  it('writes a package that readPtsb opens, with a fresh manifest', () => {
+    const { bytes, bundle } = packBook(files(), { createdAt: '2026-10-01T00:00:00Z', producer: 'books' });
+    const read = readPtsb(bytes);
+    assert.equal(read.config.id, 'demo-book');
+    assert.deepEqual(read.manifest, bundle.manifest);
+    assert.equal(read.manifest?.producer, 'books');
+    assert.equal(read.manifest?.encrypted, false);
+  });
+
+  it('gives identical bytes for the same files and createdAt, whatever the key order', () => {
+    const a = packBook(files(), { createdAt: '2026-10-01T00:00:00Z' }).bytes;
+    const reversed = Object.fromEntries(Object.entries(files()).reverse());
+    const b = packBook(reversed, { createdAt: '2026-10-01T00:00:00Z' }).bytes;
+    assert.deepEqual(a, b);
+  });
+
+  it('refuses a book the reader would refuse', () => {
+    assert.throws(() => packBook(files({ 'smartbook.json': '{"id":"Bad Id"}' })), /ID smartbook non valido/);
+  });
+
+  it('refuses a package over the limits', () => {
+    const limits = { ...PTSB_ZIP_LIMITS, maxFiles: 2 };
+    assert.throws(() => packBook(files(), { limits }), /Troppi file/);
   });
 });

@@ -78,8 +78,9 @@ export {
   parsePtsbEntries,
   readPtsb,
   readPtsbManifest,
+  packBook,
 } from './ptsb';
-export type { ZipLimits, PtsbManifest, PtsbBundle, PtsbKind } from './ptsb';
+export type { ZipLimits, PtsbManifest, PtsbBundle, PtsbKind, PackBookOptions, PackedBook } from './ptsb';
 
 export { CONTENT_FORMAT_VERSION, validateBookMeta, compareSpecVersions } from './bookMeta';
 export type { BookMeta } from './bookMeta';

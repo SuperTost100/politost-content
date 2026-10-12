@@ -1,4 +1,5 @@
-import { unzipSync } from 'fflate';
+import { unzipSync, zipSync } from 'fflate';
+import type { Zippable } from 'fflate';
 import { isValidAssetPath } from './assetResolver';
 import { validateBundle } from './validateChapter';
 import type { GraficoConfig, IdeSnippet, SmartbookConfig } from './types/smartbook';
@@ -253,4 +254,53 @@ export function readPtsbManifest(bytes: Uint8Array, limits: ZipLimits = PTSB_ZIP
   } catch {
     return null;
   }
+}
+
+export interface PackBookOptions {
+  /** `createdAt` in `ptsb.json`. Pass a fixed value, such as the last commit date, for byte-identical packages. */
+  createdAt?: string;
+  /** `producer` in `ptsb.json`. */
+  producer?: string;
+  limits?: ZipLimits;
+}
+
+export interface PackedBook {
+  bytes: Uint8Array;
+  /** The packed book as the reader will parse it, including its validation warnings. */
+  bundle: PtsbBundle;
+}
+
+// ZIP stores local time, and fflate reads it with local getters. A date built from local
+// components therefore gives the same bytes in every time zone.
+const ZIP_MTIME = new Date(1980, 0, 1, 0, 0, 0);
+
+/**
+ * Pack a book folder into a plain `.ptsb`. `files` maps paths relative to the book folder
+ * (`smartbook.json`, `chapters/01-x.md`, `assets/fig.png`) to their bytes. A `ptsb.json` in
+ * `files` is replaced. Throws when the reader would refuse the result: invalid bundle, or a
+ * package over `limits`. With the same files and `createdAt`, the bytes are identical.
+ */
+export function packBook(files: Record<string, Uint8Array>, options: PackBookOptions = {}): PackedBook {
+  const limits = options.limits ?? PTSB_ZIP_LIMITS;
+  const bundle = parsePtsbEntries(files);
+  const manifest: PtsbManifest = {
+    formatVersion: 1,
+    packageType: 'smartbook',
+    encrypted: false,
+    access: bundle.config.access ?? 'public',
+    createdAt: options.createdAt ?? new Date().toISOString(),
+    producer: options.producer ?? '@politost/content-core',
+  };
+
+  const entries: Zippable = {
+    'ptsb.json': [new TextEncoder().encode(JSON.stringify(manifest, null, 2)), { mtime: ZIP_MTIME }],
+  };
+  for (const path of Object.keys(files).sort()) {
+    if (path === 'ptsb.json') continue;
+    entries[path] = [files[path], { mtime: ZIP_MTIME }];
+  }
+
+  const bytes = zipSync(entries);
+  safeUnzip(bytes, limits);
+  return { bytes, bundle: { ...bundle, manifest } };
 }
