@@ -9,10 +9,10 @@ Spec: [`spec/content-format.md`](../../spec/content-format.md), format version i
 Each release has an npm tarball attached. Pin it by URL:
 
 ```bash
-npm install https://github.com/SuperTost100/politost-content/releases/download/content-core-v0.4.0/politost-content-core-0.4.0.tgz
+npm install https://github.com/SuperTost100/politost-content/releases/download/content-core-v0.5.0/politost-content-core-0.5.0.tgz
 ```
 
-Or download the `.tgz` and vendor it (`"@politost/content-core": "file:vendor/politost-content-core-0.4.0.tgz"`). Releases up to v0.2.1 had the package at the repository root, so `https://codeload.github.com/SuperTost100/politost-content/tar.gz/refs/tags/v0.2.1` still works for those.
+Or download the `.tgz` and vendor it (`"@politost/content-core": "file:vendor/politost-content-core-0.5.0.tgz"`). Releases up to v0.2.1 had the package at the repository root, so `https://codeload.github.com/SuperTost100/politost-content/tar.gz/refs/tags/v0.2.1` still works for those.
 
 The package ships TypeScript source (`exports` points to `src/index.ts`). Consumers need a bundler or `tsx`.
 
@@ -29,10 +29,14 @@ npm ci && npm test && npm run typecheck
 
 - `parseChapterMarkdown`, `parseExercises`, `validateChapter`, `validateBundle`
 - `renderContent`, `formulaRender`, `assetResolver`
-- `.ptsb` plain packages: `ptsbKind`, `safeUnzip`, `readPtsb`, `parsePtsbEntries`, `readPtsbManifest`. Encrypted packages are detected and refused. Decryption stays in the reader, since it needs the Politost platform
+- `.ptsb` plain packages: `packBook`, `ptsbKind`, `safeUnzip`, `readPtsb`, `parsePtsbEntries`, `readPtsbManifest`. Encrypted packages are detected and refused. Decryption stays in the reader, since it needs the Politost platform
 - Types in `types/smartbook.ts`
 
 `readPtsb` and `parsePtsbEntries` return non-fatal validation notices in `bundle.warnings`. Display them to readers, especially when a book declares a newer content-format version. Invalid bundles still throw.
+
+## Changes in 0.5.0
+
+- New: `packBook(files, { createdAt, producer, limits })` writes a plain `.ptsb` from a book folder's files. It runs the same checks as `readPtsb`, so it throws on any book the reader would refuse, including packages over `PTSB_ZIP_LIMITS`. With the same files and `createdAt` the bytes are identical, in any time zone. The reader's `pack-ptsb.ts` and the books repo both call it.
 
 ## Changes in 0.4.0
 
