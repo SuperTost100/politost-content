@@ -43,7 +43,7 @@ export interface PtsbBundle {
   assets: Record<string, Uint8Array>;
 }
 
-/** `zip` for a plain package, `encrypted` for the `PTSB` container, which needs the Politost platform. */
+/** `zip` for a plain package, `encrypted` for the `PTSB` container, which needs the PoliTost platform. */
 export type PtsbKind = 'zip' | 'encrypted' | 'unknown';
 
 export function ptsbKind(bytes: Uint8Array): PtsbKind {
@@ -233,11 +233,11 @@ export function parsePtsbEntries(entries: Record<string, Uint8Array>): PtsbBundl
   };
 }
 
-/** Read a plain `.ptsb`. Encrypted packages throw: opening them needs the Politost platform. */
+/** Read a plain `.ptsb`. Encrypted packages throw: opening them needs the PoliTost platform. */
 export function readPtsb(bytes: Uint8Array, limits: ZipLimits = PTSB_ZIP_LIMITS): PtsbBundle {
   const kind = ptsbKind(bytes);
   if (kind === 'encrypted') {
-    throw new Error('Libro protetto: richiede la piattaforma Politost.');
+    throw new Error('Libro protetto: richiede la piattaforma PoliTost.');
   }
   if (kind === 'unknown') {
     throw new Error('Formato file non riconosciuto. Usa un file .ptsb valido.');

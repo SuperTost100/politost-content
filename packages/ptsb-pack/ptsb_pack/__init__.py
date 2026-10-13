@@ -1,3 +1,3 @@
-"""Politost Smartbook packer (.ptsb)."""
+"""PoliTost Smartbook packer (.ptsb)."""
 
 __version__ = "1.2.0"

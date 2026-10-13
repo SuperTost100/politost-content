@@ -1,4 +1,4 @@
-# Politost content
+# PoliTost content
 
 A smartbook is an interactive textbook written in Markdown: chapters with numbered formulas, exercises with hints and solutions, past exam questions, Python snippets and graphs. This repository defines the format and holds the code that reads it, checks it and packs it into a `.ptsb` file.
 
