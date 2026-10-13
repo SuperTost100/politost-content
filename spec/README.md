@@ -1,6 +1,6 @@
-# Politost content format
+# PoliTost content format
 
-Canonical specification for Politost Smartbook markdown, `smartbook.json`, exercises, and assets.
+Canonical specification for PoliTost Smartbook markdown, `smartbook.json`, exercises, and assets.
 
 | Field | Value |
 |-------|-------|

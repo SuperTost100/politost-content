@@ -1,6 +1,6 @@
 # @politost/content-core
 
-Parser, renderer, and validator for [Politost Smartbook](https://github.com/SuperTost100/politost-smartbook) markdown.
+Parser, renderer, and validator for [PoliTost Smartbook](https://github.com/SuperTost100/politost-smartbook) markdown.
 
 Spec: [`spec/content-format.md`](../../spec/content-format.md), format version in [`spec/VERSION`](../../spec/VERSION).
 
@@ -29,7 +29,7 @@ npm ci && npm test && npm run typecheck
 
 - `parseChapterMarkdown`, `parseExercises`, `validateChapter`, `validateBundle`
 - `renderContent`, `formulaRender`, `assetResolver`
-- `.ptsb` plain packages: `packBook`, `ptsbKind`, `safeUnzip`, `readPtsb`, `parsePtsbEntries`, `readPtsbManifest`. Encrypted packages are detected and refused. Decryption stays in the reader, since it needs the Politost platform
+- `.ptsb` plain packages: `packBook`, `ptsbKind`, `safeUnzip`, `readPtsb`, `parsePtsbEntries`, `readPtsbManifest`. Encrypted packages are detected and refused. Decryption stays in the reader, since it needs the PoliTost platform
 - Types in `types/smartbook.ts`
 
 `readPtsb` and `parsePtsbEntries` return non-fatal validation notices in `bundle.warnings`. Display them to readers, especially when a book declares a newer content-format version. Invalid bundles still throw.
