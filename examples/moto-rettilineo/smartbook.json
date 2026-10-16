@@ -1,0 +1,27 @@
+{
+  "id": "moto-rettilineo",
+  "title": "Moto rettilineo",
+  "subject": "Fisica",
+  "access": "public",
+  "authors": ["Ada Rossi"],
+  "version": "1.0.0",
+  "specVersion": "1.2",
+  "sections": {
+    "smartbook": { "enabled": true, "label": "Capitoli" },
+    "formulario": { "enabled": true, "label": "Formulario" },
+    "esercizi": { "enabled": false, "label": "Esercizi" },
+    "esami": { "enabled": false, "label": "Prove d'esame" },
+    "ide": { "enabled": false, "label": "Laboratorio" },
+    "grafici": { "enabled": false, "label": "Grafici & Calcoli" },
+    "risposte": { "enabled": false, "label": "Soluzioni" }
+  },
+  "chapters": [
+    {
+      "id": "velocita",
+      "number": 1,
+      "title": "Velocità",
+      "file": "01-velocita.md",
+      "printable": true
+    }
+  ]
+}
