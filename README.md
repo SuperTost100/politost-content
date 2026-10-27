@@ -75,7 +75,7 @@ The [full spec](spec/content-format.md) covers every block, the validation rules
 content-core is not on npm. Each release has a tarball attached, which you pin by URL:
 
 ```bash
-npm install https://github.com/SuperTost100/politost-content/releases/download/content-core-v0.5.0/politost-content-core-0.5.0.tgz
+npm install https://github.com/SuperTost100/politost-content/releases/download/content-core-v0.5.1/politost-content-core-0.5.1.tgz
 ```
 
 The package ships TypeScript source, so use it with a bundler or `tsx`. Add `katex@^0.19.0` to your own dependencies and import its stylesheet, or formulas render wrongly. The [package README](packages/content-core/README.md) has the details.

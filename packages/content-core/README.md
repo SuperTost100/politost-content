@@ -9,10 +9,10 @@ Spec: [`spec/content-format.md`](../../spec/content-format.md), format version i
 Each release has an npm tarball attached. Pin it by URL:
 
 ```bash
-npm install https://github.com/SuperTost100/politost-content/releases/download/content-core-v0.5.0/politost-content-core-0.5.0.tgz
+npm install https://github.com/SuperTost100/politost-content/releases/download/content-core-v0.5.1/politost-content-core-0.5.1.tgz
 ```
 
-Or download the `.tgz` and vendor it (`"@politost/content-core": "file:vendor/politost-content-core-0.5.0.tgz"`). Releases up to v0.2.1 had the package at the repository root, so `https://codeload.github.com/SuperTost100/politost-content/tar.gz/refs/tags/v0.2.1` still works for those.
+Or download the `.tgz` and vendor it (`"@politost/content-core": "file:vendor/politost-content-core-0.5.1.tgz"`). Releases up to v0.2.1 had the package at the repository root, so `https://codeload.github.com/SuperTost100/politost-content/tar.gz/refs/tags/v0.2.1` still works for those.
 
 The package ships TypeScript source (`exports` points to `src/index.ts`). Consumers need a bundler or `tsx`.
 
@@ -33,6 +33,10 @@ npm ci && npm test && npm run typecheck
 - Types in `types/smartbook.ts`
 
 `readPtsb` and `parsePtsbEntries` return non-fatal validation notices in `bundle.warnings`. Display them to readers, especially when a book declares a newer content-format version. Invalid bundles still throw.
+
+## Changes in 0.5.1
+
+- `renderFormulaLatex` sends formulas like `\text{limitante} = \arg\min_i \frac{n_i}{\nu_i}` to KaTeX. Before, any formula that started with `\text{` and ended with `}` was shown as plain prose with those two braces stripped, so the reader printed raw LaTeX. Prose mode now applies only when the whole formula is a single `\text{...}`.
 
 ## Changes in 0.5.0
 
