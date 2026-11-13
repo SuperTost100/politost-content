@@ -221,19 +221,19 @@ function itemEndAfter(tex: string, start: number): number {
 const tightComma = (tex: string, i: number, skip: boolean[]) =>
   tex[i] === ',' && !skip[i] && !isSpace(tex[i - 1]) && !isSpace(tex[i + 1]);
 
-/** How many items the run of tight commas through `comma` joins. */
+/** How many items the run of tight commas through `comma` joins, counted up to three: callers only ask whether it is a list. */
 function runLength(tex: string, comma: number, skip: boolean[]): number {
   let first = itemStartBefore(tex, comma);
   let last = itemEndAfter(tex, comma + 1);
   if (first === -1 || last === -1) return 0;
   let count = 2;
-  while (tightComma(tex, first - 1, skip)) {
+  while (count < 3 && tightComma(tex, first - 1, skip)) {
     const prev = itemStartBefore(tex, first - 1);
     if (prev === -1) break;
     first = prev;
     count++;
   }
-  while (tightComma(tex, last, skip)) {
+  while (count < 3 && tightComma(tex, last, skip)) {
     const next = itemEndAfter(tex, last + 1);
     if (next === -1) break;
     last = next;
