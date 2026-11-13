@@ -139,6 +139,50 @@ S
     assert.equal(ex[0].solution, 'S');
   });
 
+  it('keeps hint and solution after an image block in the question', () => {
+    const raw = `:::exercise{id="E1.2" chapter="1"}
+## Domanda
+Guarda la figura.
+
+:::image{src="assets/a.png" alt="A"}
+:::
+
+Quanto vale x?
+
+:::hint
+H
+:::
+
+:::solution
+S
+:::
+:::
+
+:::exercise{id="E1.3" chapter="1"}
+Dopo
+:::`;
+    const ex = parseExercises(raw);
+    assert.deepEqual(ex.map((e) => e.id), ['E1.2', 'E1.3']);
+    assert.equal(ex[0].hint, 'H');
+    assert.equal(ex[0].solution, 'S');
+    assert.match(ex[0].question, /:::image\{src="assets\/a.png" alt="A"\}\n:::\n\nQuanto vale x\?/);
+  });
+
+  it('reads an image block written on one line as opening and closing itself', () => {
+    const raw = `:::exercise{id="E1.4" chapter="1"}
+Figura :
+:::image{src="assets/a.png" alt="A"} :::
+Domanda
+:::solution
+S
+:::
+:::`;
+    const ex = parseExercises(raw);
+    assert.equal(ex.length, 1);
+    assert.equal(ex[0].solution, 'S');
+    assert.match(ex[0].question, /Domanda/);
+  });
+
   it('keeps a mid-line ::: inside the hint and still returns an unclosed exercise', () => {
     const hintWithFence = `:::exercise{id="H06-a" chapter="1"}
 ## Domanda

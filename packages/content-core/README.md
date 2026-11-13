@@ -9,10 +9,10 @@ Spec: [`spec/content-format.md`](../../spec/content-format.md), format version i
 Each release has an npm tarball attached. Pin it by URL:
 
 ```bash
-npm install https://github.com/SuperTost100/politost-content/releases/download/content-core-v0.5.1/politost-content-core-0.5.1.tgz
+npm install https://github.com/SuperTost100/politost-content/releases/download/content-core-v0.6.0/politost-content-core-0.6.0.tgz
 ```
 
-Or download the `.tgz` and vendor it (`"@politost/content-core": "file:vendor/politost-content-core-0.5.1.tgz"`). Releases up to v0.2.1 had the package at the repository root, so `https://codeload.github.com/SuperTost100/politost-content/tar.gz/refs/tags/v0.2.1` still works for those.
+Or download the `.tgz` and vendor it (`"@politost/content-core": "file:vendor/politost-content-core-0.6.0.tgz"`). Releases up to v0.2.1 had the package at the repository root, so `https://codeload.github.com/SuperTost100/politost-content/tar.gz/refs/tags/v0.2.1` still works for those.
 
 The package ships TypeScript source (`exports` points to `src/index.ts`). Consumers need a bundler or `tsx`.
 
@@ -33,6 +33,12 @@ npm ci && npm test && npm run typecheck
 - Types in `types/smartbook.ts`
 
 `readPtsb` and `parsePtsbEntries` return non-fatal validation notices in `bundle.warnings`. Display them to readers, especially when a book declares a newer content-format version. Invalid bundles still throw.
+
+## Changes in 0.6.0
+
+- Decimal commas in math render without a space. KaTeX reads `,` as punctuation, so `$54,0\,\mathrm{g}$` used to render as "54, 0 g". `renderContent` and `renderFormulaLatex` now rewrite a comma between two digits as `{,}`, except in lists of three or more (`(3,1,-1)`), pairs and intervals that fill a pair of brackets (`(3,4)`, `[0,1)`, `\lbrack 0,2\pi\lbrack`) and index groups (`x_{1,2}`). `{,}` forces a decimal and a space after the comma forces a list. The full rule is in the spec under "Virgola decimale". If KaTeX rejects the rewritten formula, the original is rendered as written.
+- `validateBundle` warns about what made the reader fail: a chapter without an `id` slug, a `function` graph without `functions` and `xDomain`, and a `plotly` graph without `data`. These are warnings, so every book that opened before still opens. Missing `sections` stays a warning. The content format stays 1.2, because no book that was valid before becomes invalid.
+- An `:::image` block inside an exercise no longer ends the exercise. `parseExercises` used to drop the hint and solution after it, and `validateExercises` reported "blocchi ::: non bilanciati".
 
 ## Changes in 0.5.1
 

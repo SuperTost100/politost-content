@@ -1,4 +1,4 @@
-import katex from 'katex';
+import { renderKatex } from './decimalComma';
 import type { FormulaRef } from './types/smartbook';
 import { escapeHtml, sanitizeHtml } from './sanitizeHtml';
 
@@ -9,7 +9,7 @@ export function extractDisplayTex(latex: string): string {
 
 export function renderDisplayTex(tex: string): string {
   try {
-    return katex.renderToString(tex, { displayMode: true, throwOnError: false });
+    return renderKatex(tex, true);
   } catch {
     return escapeHtml(tex);
   }

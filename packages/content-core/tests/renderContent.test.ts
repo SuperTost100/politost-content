@@ -67,6 +67,17 @@ describe('parseInlineSegments', () => {
     assert.match(html, /katex/);
   });
 
+  it('renders decimal commas in inline and display math without the space', async () => {
+    const { parseInlineSegments, parseContentBlocks } = await load();
+    const spacedComma = /mpunct">,<\/span><span class="mspace"/;
+    assert.doesNotMatch(textOf(parseInlineSegments('una massa di $54,0\\,\\mathrm{g}$')), spacedComma);
+    assert.match(textOf(parseInlineSegments('il punto $(3,4)$')), spacedComma);
+    const blocks = parseContentBlocks('Vale\n\n$$\\frac{15}{63,01} = 0,238$$');
+    const math = blocks.find((b) => b.type === 'math');
+    assert.ok(math?.type === 'math');
+    assert.doesNotMatch(math.html, spacedComma);
+  });
+
   it('escapes raw HTML in the source', async () => {
     const { parseInlineSegments } = await load();
     assert.equal(textOf(parseInlineSegments('a <script>x</script> b')), 'a &lt;script&gt;x&lt;/script&gt; b');
