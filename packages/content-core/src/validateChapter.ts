@@ -305,7 +305,10 @@ const SECTION_KEYS = ['smartbook', 'formulario', 'esercizi', 'esami', 'ide', 'gr
 
 type BundleChapter = { id?: unknown; file: string; number: number };
 
-/** Broken chapter entries are errors. Missing sections are warnings: Pyxis and others open books without them. */
+/**
+ * Broken chapter entries are errors. Missing sections are warnings: Pyxis and others open books without them.
+ * A missing chapter id is a warning too, because books without one open today; the reader then links to `/capitolo/undefined`.
+ */
 function validateConfigShape(
   config: { sections?: unknown },
   chapters: BundleChapter[],
@@ -317,6 +320,11 @@ function validateConfigShape(
     if (!ch || typeof ch !== 'object') {
       errors.push(`smartbook.json: chapters[${i}] non è un oggetto`);
       continue;
+    }
+    if (typeof ch.id !== 'string' || !ID_RE.test(ch.id)) {
+      warnings.push(
+        `smartbook.json: chapters[${i}].id deve essere uno slug non vuoto (a-z, 0-9, -), trovato ${JSON.stringify(ch.id) ?? 'nessun id'}`,
+      );
     }
     if (typeof ch.file !== 'string' || !ch.file) {
       errors.push(`smartbook.json: chapters[${i}] senza file`);
@@ -448,13 +456,17 @@ export function validateBundle(
     warnings.push(...ex.warnings.map((w) => `esami.md: ${w}`));
     validateExerciseRefs(extras.esamiRaw, 'esami.md', bookParagraphs, bookFormulaIndex, warnings);
   }
-  if (extras.graficiRaw) validateGraficiRaw(extras.graficiRaw, errors);
+  if (extras.graficiRaw) validateGraficiRaw(extras.graficiRaw, errors, warnings);
   if (extras.ideRaw) validateIdeRaw(extras.ideRaw, errors);
 
   return { valid: errors.length === 0, errors, warnings };
 }
 
-function validateGraficiRaw(raw: string, errors: string[]): void {
+/**
+ * A bad JSON shape or type is an error. A graph whose config the reader cannot draw is a warning,
+ * so one broken graph does not stop the whole book from opening.
+ */
+function validateGraficiRaw(raw: string, errors: string[], warnings: string[]): void {
   let data: unknown;
   try {
     data = JSON.parse(raw);
@@ -470,8 +482,51 @@ function validateGraficiRaw(raw: string, errors: string[]): void {
     const type = item && typeof item === 'object' ? (item as { type?: unknown }).type : undefined;
     if (type !== 'function' && type !== 'plotly') {
       errors.push(`grafici.json[${i}]: type "${String(type)}" non valido — atteso function o plotly`);
+      continue;
     }
+    const config = (item as { config?: unknown }).config;
+    if (!isPlainObject(config)) {
+      warnings.push(`grafici.json[${i}]: config mancante o non è un oggetto`);
+      continue;
+    }
+    const problem = type === 'function' ? functionGraphProblem(config) : plotlyGraphProblem(config);
+    if (problem) warnings.push(`grafici.json[${i}]: ${problem}`);
   }
+}
+
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+  v !== null && typeof v === 'object' && !Array.isArray(v);
+
+/** Two finite numbers, lower first, as the reader passes them to Plotly's axis range. */
+const isRange = (v: unknown): boolean =>
+  Array.isArray(v) && v.length === 2 && v.every((n) => typeof n === 'number' && Number.isFinite(n)) && v[0] < v[1];
+
+/** The fields GraficiView reads for a `function` graph. */
+function functionGraphProblem(config: Record<string, unknown>): string | null {
+  const fns = config.functions;
+  if (!Array.isArray(fns) || fns.length === 0) return 'config.functions deve essere una lista non vuota di { fn, label }';
+  for (const [j, f] of fns.entries()) {
+    if (!isPlainObject(f) || typeof f.fn !== 'string' || !f.fn.trim()) return `config.functions[${j}].fn deve essere un'espressione non vuota`;
+    if (f.label !== undefined && typeof f.label !== 'string') return `config.functions[${j}].label deve essere una stringa`;
+  }
+  if (!isRange(config.xDomain)) return 'config.xDomain deve essere [min, max] con due numeri, min minore di max';
+  if (config.yDomain !== undefined && !isRange(config.yDomain)) return 'config.yDomain deve essere [min, max] con due numeri, min minore di max';
+  for (const key of ['xLabel', 'yLabel']) {
+    if (config[key] !== undefined && typeof config[key] !== 'string') return `config.${key} deve essere una stringa`;
+  }
+  return null;
+}
+
+/** The reader draws nothing without at least one trace, and expects `layout` to be an object when present. */
+function plotlyGraphProblem(config: Record<string, unknown>): string | null {
+  const data = config.data;
+  if (!Array.isArray(data) || data.length === 0 || !data.every(isPlainObject)) {
+    return 'config.data deve essere una lista non vuota di tracce Plotly';
+  }
+  if (config.layout !== undefined && config.layout !== null && !isPlainObject(config.layout)) {
+    return 'config.layout deve essere un oggetto';
+  }
+  return null;
 }
 
 function validateIdeRaw(raw: string, errors: string[]): void {

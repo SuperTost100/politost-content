@@ -22,7 +22,10 @@ const IMAGE_BLOCK = new RegExp(
 );
 const IMAGE_MARKER = new RegExp(`<!--IMAGE:(\\{${IMAGE_QUOTED_BRACE}\\})-->`, 'g');
 const EXERCISE_OPEN = /:::exercise\{([^}]+)\}\n/g;
-const BLOCK_OPEN = /^(exercise|hint|solution)(\{|\s)/;
+/** `:::hint`, `:::solution`, `:::exercise`, or any `:::name{...}` such as `:::image{...}`. */
+const BLOCK_OPEN_LINE = /^:::(?:(?:exercise|hint|solution)(?=[{\s]|$)|[a-z][\w-]*\{)/;
+/** `:::image{...} :::` on one line opens and closes itself. */
+const SELF_CLOSED_LINE = /\}[ \t]*:::[ \t]*$/;
 const PARA_HEADER = /^## (p\d+) \| (.+)$/gm;
 const FRONTMATTER_BLOCK = /^---[\s\S]*?---\n*/;
 const MARKDOWN_IMAGE = /!\[[^\]]*\]\([^)]*\)/;
@@ -137,11 +140,19 @@ export function parseChapterMarkdown(raw: string, chapterNumber: number): Chapte
   };
 }
 
+/**
+ * True when a line opens a `:::` block, so the next bare `:::` closes it and not the block around it.
+ * Shared with validateExercises.
+ */
+export function opensFence(line: string): boolean {
+  return BLOCK_OPEN_LINE.test(line) && !SELF_CLOSED_LINE.test(line);
+}
+
 function atLineStart(raw: string, idx: number): boolean {
   return idx === 0 || raw[idx - 1] === '\n';
 }
 
-/** Trova la chiusura `:::` bilanciando solo fence a inizio riga (hint, solution). */
+/** Finds the `:::` that closes the block, counting nested blocks at line start (hint, solution, image). */
 function findBlockClose(raw: string, bodyStart: number): number {
   let depth = 1;
   let pos = bodyStart;
@@ -154,9 +165,14 @@ function findBlockClose(raw: string, bodyStart: number): number {
       continue;
     }
 
-    const after = raw.slice(idx + 3);
-    if (BLOCK_OPEN.test(after)) {
+    const lineEnd = raw.indexOf('\n', idx);
+    const line = raw.slice(idx, lineEnd === -1 ? raw.length : lineEnd);
+    if (opensFence(line)) {
       depth++;
+      pos = idx + 3;
+      continue;
+    }
+    if (SELF_CLOSED_LINE.test(line)) {
       pos = idx + 3;
       continue;
     }

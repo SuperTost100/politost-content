@@ -309,6 +309,77 @@ This exercise has no closing fence at all
     assert.ok(r.warnings.some((w) => w.includes('sections senza { enabled, label }')));
   });
 
+  it('warns about a chapter without an id or with an id that is not a slug, without rejecting the book', () => {
+    const r = validateBundle(
+      {
+        id: 'demo-book',
+        chapters: [
+          { file: 'a.md', number: 1 },
+          { id: '', file: 'b.md', number: 2 },
+          { id: 'Capitolo 3', file: 'c.md', number: 3 },
+          { id: 'quattro', file: 'd.md', number: 4 },
+        ],
+      },
+      { 'a.md': VALID, 'b.md': '## p1 | B\n\nB.\n', 'c.md': '## p1 | C\n\nC.\n', 'd.md': '## p1 | D\n\nD.\n' },
+    );
+    assert.equal(r.valid, true, r.errors.join('\n'));
+    assert.deepEqual(r.warnings.filter((w) => w.includes('.id deve')), [
+      'smartbook.json: chapters[0].id deve essere uno slug non vuoto (a-z, 0-9, -), trovato nessun id',
+      'smartbook.json: chapters[1].id deve essere uno slug non vuoto (a-z, 0-9, -), trovato ""',
+      'smartbook.json: chapters[2].id deve essere uno slug non vuoto (a-z, 0-9, -), trovato "Capitolo 3"',
+    ]);
+  });
+
+  it('warns about graphs without the config the reader draws from, without rejecting the book', () => {
+    const graficiCheck = (graficiRaw: string) => {
+      const r = validateBundle(
+        { id: 'demo-book', chapters: [{ id: 'c', file: 'c.md', number: 1 }] },
+        { 'c.md': '## p1 | X\n' },
+        {},
+        { graficiRaw },
+      );
+      assert.equal(r.valid, true, r.errors.join('\n'));
+      return r.warnings.filter((w) => w.startsWith('grafici.json'));
+    };
+
+    assert.deepEqual(graficiCheck('[{"id":"g","title":"G","type":"function"}]'), [
+      'grafici.json[0]: config mancante o non è un oggetto',
+    ]);
+    assert.deepEqual(graficiCheck('[{"id":"g","title":"G","type":"function","config":{"xDomain":[0,1]}}]'), [
+      'grafici.json[0]: config.functions deve essere una lista non vuota di { fn, label }',
+    ]);
+    assert.deepEqual(graficiCheck('[{"id":"g","title":"G","type":"function","config":{"functions":[{"fn":"x"}]}}]'), [
+      'grafici.json[0]: config.xDomain deve essere [min, max] con due numeri, min minore di max',
+    ]);
+    assert.deepEqual(graficiCheck('[{"id":"g","title":"G","type":"function","config":{"functions":[{"fn":"x"}],"xDomain":[0,1],"yDomain":[2,1]}}]'), [
+      'grafici.json[0]: config.yDomain deve essere [min, max] con due numeri, min minore di max',
+    ]);
+    assert.deepEqual(graficiCheck('[{"id":"p","title":"P","type":"plotly","config":{"data":[],"layout":{}}}]'), [
+      'grafici.json[0]: config.data deve essere una lista non vuota di tracce Plotly',
+    ]);
+    assert.deepEqual(graficiCheck('[{"id":"p","title":"P","type":"plotly","config":{"data":[{"y":[1]}],"layout":[]}}]'), [
+      'grafici.json[0]: config.layout deve essere un oggetto',
+    ]);
+  });
+
+  it('accepts the function and plotly graphs the spec shows without warnings', () => {
+    const graficiRaw = JSON.stringify([
+      {
+        id: 'sinusoide', title: 'Curva di esempio', type: 'function',
+        config: { functions: [{ fn: 'sin(x)', label: 'sin(x)' }], xDomain: [0, 6.28], yDomain: [-1.2, 1.2], xLabel: 'x', yLabel: 'y' },
+      },
+      { id: 'barre', title: 'Barre', type: 'plotly', config: { data: [{ type: 'bar', x: ['a'], y: [1] }], layout: {} } },
+    ]);
+    const r = validateBundle(
+      { id: 'demo-book', chapters: [{ id: 'c', file: 'c.md', number: 1 }] },
+      { 'c.md': '## p1 | X\n' },
+      {},
+      { graficiRaw },
+    );
+    assert.deepEqual(r.errors, []);
+    assert.deepEqual(r.warnings.filter((w) => w.startsWith('grafici.json')), []);
+  });
+
   it('warns about links to a paragraph missing in another chapter', () => {
     const r = validateBundle(
       { id: 'demo-book', chapters: [{ file: 'a.md', number: 1 }, { file: 'b.md', number: 2 }] },

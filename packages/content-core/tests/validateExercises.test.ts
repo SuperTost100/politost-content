@@ -52,6 +52,14 @@ Q?
     assert.equal(r.valid, false);
   });
 
+  it('accepts an image block inside an exercise', () => {
+    const raw = SAMPLE.replace('Q?', 'Q?\n\n:::image{src="assets/a.png" alt="A"}\n:::\n');
+    const r = validateExercises(raw, 'esercizi');
+    assert.deepEqual(r.errors, []);
+    assert.deepEqual(r.warnings, []);
+    assert.equal(r.exerciseCount, 1);
+  });
+
   it('rejects a well-formed exercise that never closes', () => {
     const raw = `---
 type: esercizi

@@ -1,4 +1,4 @@
-import { normalizeNewlines, parseExercises } from './parser';
+import { normalizeNewlines, opensFence, parseExercises } from './parser';
 
 export interface ExerciseValidationResult {
   valid: boolean;
@@ -10,13 +10,12 @@ export interface ExerciseValidationResult {
 const FRONTMATTER = /^---[ \t]*\n([\s\S]*?)\n---/;
 const FM_TYPE = /^type:\s*(\S+)/m;
 const DIFFICULTY = new Set<string>(['facile', 'medio', 'difficile']);
-const FENCE_OPEN = /^:::(exercise|hint|solution)(\{|\s|$)/;
 
 function unbalancedFences(body: string): boolean {
   let depth = 0;
   for (const line of body.split('\n')) {
     if (!line.startsWith(':::')) continue;
-    if (FENCE_OPEN.test(line)) {
+    if (opensFence(line)) {
       depth += 1;
       continue;
     }

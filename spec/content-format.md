@@ -105,7 +105,8 @@ Vedi `politost-smartbook/src/content/esempio/` — libro dimostrativo integrato 
 | `authors` | Opzionale. Lista di nomi, nell'ordine in cui vanno mostrati. Se presente non può essere vuota |
 | `version` | Opzionale. Versione del contenuto del libro, decisa dagli autori. Consigliato semver (`1.2.0`), altrimenti il validatore dà un avviso |
 | `specVersion` | Opzionale. Versione di questo formato per cui il libro è scritto, forma `MAJOR.MINOR`. Se manca vale `1.0`. Un lettore che trova una versione più nuova della sua mostra un avviso e prova comunque ad aprire il libro |
-| `chapters[].id` | Slug capitolo: `/capitolo/<id>` |
+| `sections` | Le sette chiavi della [panoramica](#1-panoramica-sezioni), ognuna con `enabled` (booleano) e `label` (stringa). Se una manca il validatore dà un avviso |
+| `chapters[].id` | Slug capitolo (`a-z`, `0-9`, `-`): `/capitolo/<id>`. Se manca o non è uno slug il validatore dà un avviso |
 | `chapters[].number` | Numero per formule `(N.M)` |
 | `chapters[].printable` | Abilita versione stampabile |
 
@@ -176,6 +177,35 @@ Formule:
 - Display: `$$\int_0^1 x\,dx$$`
 
 Lasciare uno spazio prima e dopo `**` quando tocca una parola (`Un **campo** è…`, non `Un**campo**è…`). CommonMark non chiude il grassetto se `**` sta fra punteggiatura e una lettera: `**campo:**è` resta testo con gli asterischi.
+
+### Virgola decimale
+
+I decimali si scrivono con la virgola, come nel testo: `$m = 54,0\,\mathrm{g}$`. KaTeX legge la virgola come punteggiatura e ci mette uno spazio dopo ("54, 0"), quindi content-core 0.6.0 e successivi riscrivono `54,0` come `54{,}0` prima di passarlo a KaTeX. Vale ovunque si rendono formule: inline, display, formule numerate e formulario. Il sorgente del libro non cambia.
+
+Una virgola fra due cifre, senza spazi attorno, è decimale, tranne in questi casi, dove resta un separatore:
+
+| Caso | Esempi |
+|------|--------|
+| Elenco di tre o più elementi uniti da virgole senza spazi. Gli elementi sono numeri, anche con segno, lettere singole o `\dots` | `(3,1,-1)`, `m_l=-1,0,1`, `k=0,1,2,3`, `\{0,1,2,\dots\}` |
+| Due elementi che sono tutto il contenuto di una coppia di parentesi: `()`, `[]`, `\{ \}`, `\lbrack \rbrack`, `\langle \rangle`, anche con `\left`/`\right` o `\bigl`/`\bigr`, anche misti o rovesciati | `(3,4)`, `(-3,4)`, `[0,1)`, `]0,1[`, `\lbrack -1,1\rbrack`, `\vec v=(2,2)\,\mathrm{m/s}` |
+| Come sopra, quando un estremo è un'espressione senza spazi, unità o relazioni | `\lbrack 0,2\pi\lbrack`, `(1,1+\varepsilon)`, `(-\sqrt2,0)`, `(6-2,8)` |
+| Due elementi che sono tutto il contenuto di un pedice o di un esponente fra graffe | `x_{1,2}`, `\lambda_{1,2}` |
+
+Restano decimali, anche fra parentesi:
+
+- un numero con unità, spazi o una relazione accanto: `(2,0\,\mathrm{kg})`, `(2,0\text{ kg})`;
+- un numero in una graffa che non è un pedice o un esponente: `\frac{15}{63,01}`, `\mathrm{0,5}`;
+- l'argomento di una funzione di una variabile: `\log(2,5)`, `\sin(0,5)`;
+- un numero con lo zero iniziale dopo la virgola, che un intero non ha: `(1,00)`, `(0,05)`;
+- un numero in notazione scientifica: `(6,67\cdot10^{-11})`;
+- un esponente con segno: `10^{-9,52}`.
+
+La regola non tocca mai il testo dentro `\text{…}`, `\textbf{…}`, `\mbox{…}`, `\operatorname{…}` e comandi simili, né le dimensioni (`\hspace{1,5em}`). Una formula che scrive già qualche decimale come `{,}` resta com'è: chi l'ha scritta ha segnato i decimali a mano, quindi le altre virgole sono separatori.
+
+Quando la regola sbaglia, il sorgente la corregge con una delle due scappatoie:
+
+- `{,}` forza un decimale: `(273{,}15)`, `\log(0{,}952)`. Dopo il primo `{,}` la formula resta com'è, quindi vanno scritti così tutti i suoi decimali;
+- uno spazio dopo la virgola forza un separatore: `i=1, 2`, `0, 1 \in A`.
 
 ### Formule numerate
 
@@ -249,7 +279,7 @@ Soluzione passo passo.
 | `difficulty` | `facile`, `medio`, `difficile` |
 | `type` | `esame` in `esami.md` |
 
-`:::hint` e `:::solution` sono annidati dentro `:::exercise`.
+`:::hint` e `:::solution` sono annidati dentro `:::exercise`. Domanda, suggerimento e soluzione possono contenere immagini, scritte come nei capitoli (`:::image{…}` e `:::` sulla riga dopo).
 
 `:::hint` è facoltativo in entrambi i file. Il validatore avvisa se manca in `esercizi.md`, non in `esami.md`: le prove d'esame si esercitano come il giorno del compito, senza suggerimenti. `:::solution` mancante dà un avviso in entrambi.
 
@@ -297,11 +327,11 @@ Array di snippet:
 }
 ```
 
-`fn` usa variabile `x` e `^` per le potenze.
+`fn` usa variabile `x` e `^` per le potenze. Servono `config.functions` (almeno una voce, ciascuna con `fn` non vuoto) e `config.xDomain` (`[min, max]`, con `min` minore di `max`). `yDomain`, se c'è, ha la stessa forma, e `label`, `xLabel` e `yLabel` sono stringhe. Se manca qualcosa il validatore dà un avviso e il lettore non disegna quel grafico.
 
 ### Tipo `plotly`
 
-Configurazione `data` + `layout` Plotly nativa (barre, scatter, ecc.).
+Configurazione `data` + `layout` Plotly nativa (barre, scatter, ecc.). `config.data` contiene almeno una traccia e `layout`, se c'è, è un oggetto. Altrimenti il validatore dà un avviso.
 
 ---
 
@@ -333,7 +363,7 @@ Il validatore è `validateChapter` / `validateBundle` in content-core (`packages
 - capitoli elencati in `smartbook.json` ma assenti, `id` non valido, metadati 1.1 con forma sbagliata;
 - **markup del generatore** in un capitolo, in `esercizi.md` o in `esami.md`: tag rimasti dall'output di un modello, come `</markdown>`, `</invoke>`, `<parameter name="…">`, `<function_calls>`, `antml:*`, `tool_use`, `tool_result`. È un errore in tutti i profili (`dev` e `ship`). Chi produce i file deve toglierli prima di esportare.
 
-Danno un avviso, in entrambi i profili: testo prima del primo `## pN |` (il parser lo mette in p1), link `ref:chapter/N#pM` verso un paragrafo che non esiste, `sections` incompleto, e negli esercizi `chapter` sconosciuto, riferimenti senza destinazione e LaTeX non valido. Codice inline e blocchi di codice sono esclusi dai controlli su `**` e LaTeX.
+Danno un avviso, in entrambi i profili: testo prima del primo `## pN |` (il parser lo mette in p1), link `ref:chapter/N#pM` verso un paragrafo che non esiste, `sections` incompleto, capitoli senza `id` o con `id` che non è uno slug, grafici senza la `config` descritta in [Grafici](#7-grafici-graficijson), e negli esercizi `chapter` sconosciuto, riferimenti senza destinazione e LaTeX non valido. Codice inline e blocchi di codice sono esclusi dai controlli su `**` e LaTeX.
 
 Il profilo `dev` riporta come avvisi molti controlli che `ship` tratta come errori. Il markup del generatore è un errore in entrambi. L'elenco completo è nei test di content-core.
 

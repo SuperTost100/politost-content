@@ -16,4 +16,10 @@ describe('renderFormulaLatex', () => {
   it('keeps nested braces inside a prose \\text{...}', () => {
     assert.equal(renderFormulaLatex('$$\\text{a {b} c}$$'), '<p class="formula-prose">a {b} c</p>');
   });
+
+  it('renders decimal commas in numbered formulas and the formula sheet without the space', () => {
+    const spacedComma = /mpunct">,<\/span><span class="mspace"/;
+    assert.doesNotMatch(renderFormulaLatex('$$m = 54,0\\,\\mathrm{g}$$'), spacedComma);
+    assert.match(renderFormulaLatex('$$P = (3,4)$$'), spacedComma);
+  });
 });

@@ -1,5 +1,5 @@
-import katex from 'katex';
 import MarkdownIt, { type Token } from 'markdown-it';
+import { renderKatex } from './decimalComma';
 import { escapeHtml, sanitizeHtml } from './sanitizeHtml';
 
 const MATH_SLOT = '';
@@ -92,7 +92,7 @@ function restoreSlotSource(text: string, math: MathSlot[], refs: RefSlot[]): str
 
 function renderMathSlot({ tex, display }: MathSlot): string {
   try {
-    const html = katex.renderToString(tex, { displayMode: display, throwOnError: false });
+    const html = renderKatex(tex, display);
     return display ? `<span class="katex-block">${html}</span>` : html;
   } catch {
     return display ? `<span class="katex-error">${escapeHtml(tex)}</span>` : escapeHtml(tex);
