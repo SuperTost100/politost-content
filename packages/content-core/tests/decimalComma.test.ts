@@ -110,6 +110,11 @@ describe('decimalCommas', () => {
     unchanged('a_1,2');
   });
 
+  it('reads an escaped underscore as a character, not a subscript', () => {
+    assert.equal(decimalCommas('\\_1,2'), '\\_1{,}2');
+    assert.equal(decimalCommas('x\\_{1,5}'), 'x\\_{1{,}5}');
+  });
+
   it('leaves commas next to a space alone: a space always means a list', () => {
     unchanged('1, 2');
     unchanged('54, 0');

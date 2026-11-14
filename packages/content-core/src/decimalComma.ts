@@ -96,8 +96,9 @@ const UNARY_FUNCTIONS = new Set([
 ]);
 
 function commaKind(tex: string, comma: number, skip: boolean[]): DigitCommaKind {
-  if (isExpressionList(tex, comma, skip)) return 'list';
+  // The cheap check first: a run of plain numbers is settled without walking the whole run.
   if (runLength(tex, comma, skip) >= 3) return 'list';
+  if (isExpressionList(tex, comma, skip)) return 'list';
   // `x^2,5`: the script takes only the `2`, so this comma cannot sit inside a number.
   if (afterScriptChar(tex, comma)) return 'script';
   // Integers are not written with a leading zero, so `(1,00)` and `(0,05)` hold decimals.
@@ -365,15 +366,23 @@ function wordBefore(tex: string, pos: number): string {
   }
 }
 
+/** `_` or `^` at `pos` as a script operator. `\_` is a literal underscore, so an escaped one does not count. */
+function scriptAt(tex: string, pos: number): string {
+  if (tex[pos] !== '_' && tex[pos] !== '^') return '';
+  let backslashes = 0;
+  while (tex[pos - 1 - backslashes] === '\\') backslashes++;
+  return backslashes % 2 === 1 ? '' : tex[pos];
+}
+
 /** `_` or `^` when the plain `{` at `pos` opens a script group, else an empty string. */
 function scriptBefore(tex: string, pos: number): string {
   let k = pos;
   while (isSpace(tex[k - 1])) k--;
-  return tex[k - 1] === '_' || tex[k - 1] === '^' ? tex[k - 1] : '';
+  return scriptAt(tex, k - 1);
 }
 
 /** True when the digit before the comma is the whole argument of an unbraced `^` or `_`. */
-const afterScriptChar = (tex: string, comma: number) => tex[comma - 2] === '_' || tex[comma - 2] === '^';
+const afterScriptChar = (tex: string, comma: number) => scriptAt(tex, comma - 2) !== '';
 
 /** A comma that could be a decimal: no space around it, a digit on each side, not right after `x^2`. */
 const canBeDecimal = (tex: string, comma: number, skip: boolean[]) =>
