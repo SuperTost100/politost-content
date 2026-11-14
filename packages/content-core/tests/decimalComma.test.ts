@@ -84,6 +84,32 @@ describe('decimalCommas', () => {
     assert.equal(decimalCommas('10^{-9,52}'), '10^{-9{,}52}');
   });
 
+  it('keeps a signed pair of subscript indices: only an exponent can be a signed decimal', () => {
+    unchanged('a_{-1,2}');
+    unchanged('a_{+1,2}');
+    assert.equal(decimalCommas('10^{-9,52}'), '10^{-9{,}52}');
+  });
+
+  it('keeps lists of three or more whose items are expressions', () => {
+    unchanged('(1,2,\\pi)');
+    unchanged('(1,2^2,3)');
+    unchanged('\\vec u=(1,2,\\sqrt{3})');
+    unchanged('(1,2,f(3))');
+    unchanged('x=1,2,\\pi');
+  });
+
+  it('still reads decimal arithmetic inside one bracket as decimals', () => {
+    assert.equal(decimalCommas('(0,5\\cdot 2,0)'), '(0{,}5\\cdot 2{,}0)');
+    assert.equal(decimalCommas('(2,0\\,\\mathrm{kg})(9,8\\,\\mathrm{m\\,s^{-2}})'), '(2{,}0\\,\\mathrm{kg})(9{,}8\\,\\mathrm{m\\,s^{-2}})');
+    assert.equal(decimalCommas('\\frac{(1,0-2,0)\\cdot 4,0}{3,0}'), '\\frac{(1{,}0-2{,}0)\\cdot 4{,}0}{3{,}0}');
+    assert.equal(decimalCommas('\\arctan(4,0/3,0)'), '\\arctan(4{,}0/3{,}0)');
+  });
+
+  it('never reads a comma after a one-character script as a decimal', () => {
+    unchanged('x^2,5');
+    unchanged('a_1,2');
+  });
+
   it('leaves commas next to a space alone: a space always means a list', () => {
     unchanged('1, 2');
     unchanged('54, 0');

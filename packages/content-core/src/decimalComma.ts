@@ -35,9 +35,10 @@ export function decimalCommas(tex: string): string {
 
 /**
  * - `decimal`: rendered without the space.
- * - `list`: three or more items joined by commas with no space, as in `1,2,3` or `0,1,\dots`.
+ * - `list`: three or more items joined by commas with no space, as in `1,2,3`, `0,1,\dots` or `(1,2,\pi)`.
  * - `pair`: the two items are all that is inside a pair of brackets, as in `(3,4)` or `[0,2\pi)`.
- * - `script`: the two items are all that is inside `_{...}` or `^{...}`, as in `x_{1,2}`.
+ * - `script`: indices. The two items are all that is inside `_{...}` or `^{...}`, as in `x_{1,2}`,
+ *   or the comma follows a one-character script, as in `x^2,5`.
  * - `marked`: the formula already writes its decimals as `{,}`, so its other commas stay as written.
  */
 export type DigitCommaKind = 'decimal' | 'list' | 'pair' | 'script' | 'marked';
@@ -95,7 +96,10 @@ const UNARY_FUNCTIONS = new Set([
 ]);
 
 function commaKind(tex: string, comma: number, skip: boolean[]): DigitCommaKind {
+  if (isExpressionList(tex, comma, skip)) return 'list';
   if (runLength(tex, comma, skip) >= 3) return 'list';
+  // `x^2,5`: the script takes only the `2`, so this comma cannot sit inside a number.
+  if (afterScriptChar(tex, comma)) return 'script';
   // Integers are not written with a leading zero, so `(1,00)` and `(0,05)` hold decimals.
   if (tex[comma + 1] === '0' && isDigit(tex[comma + 2])) return 'decimal';
   // Scientific notation: `(6,67\cdot10^{-11})`.
@@ -106,11 +110,12 @@ function commaKind(tex: string, comma: number, skip: boolean[]): DigitCommaKind 
   if (isBracket(open.token) && isBracket(close.token)) {
     return UNARY_FUNCTIONS.has(wordBefore(tex, open.pos)) ? 'decimal' : 'pair';
   }
-  if (open.token === '{' && close.token === '}' && isScriptBrace(tex, open.pos)) {
-    // Indices are not signed: `10^{-9,52}` is a decimal exponent.
+  const script = open.token === '{' && close.token === '}' ? scriptBefore(tex, open.pos) : '';
+  if (script) {
+    // A signed exponent is a value, `10^{-9,52}`. Subscripts are indices even when signed, `a_{-1,2}`.
     let k = open.pos + 1;
     while (isSpace(tex[k])) k++;
-    return tex[k] === '-' || tex[k] === '+' ? 'decimal' : 'script';
+    return script === '^' && (tex[k] === '-' || tex[k] === '+') ? 'decimal' : 'script';
   }
   return 'decimal';
 }
@@ -360,9 +365,96 @@ function wordBefore(tex: string, pos: number): string {
   }
 }
 
-/** True when the plain `{` at `pos` opens a `_{...}` or `^{...}` group. */
-function isScriptBrace(tex: string, pos: number): boolean {
+/** `_` or `^` when the plain `{` at `pos` opens a script group, else an empty string. */
+function scriptBefore(tex: string, pos: number): string {
   let k = pos;
   while (isSpace(tex[k - 1])) k--;
-  return tex[k - 1] === '_' || tex[k - 1] === '^';
+  return tex[k - 1] === '_' || tex[k - 1] === '^' ? tex[k - 1] : '';
+}
+
+/** True when the digit before the comma is the whole argument of an unbraced `^` or `_`. */
+const afterScriptChar = (tex: string, comma: number) => tex[comma - 2] === '_' || tex[comma - 2] === '^';
+
+/** A comma that could be a decimal: no space around it, a digit on each side, not right after `x^2`. */
+const canBeDecimal = (tex: string, comma: number, skip: boolean[]) =>
+  tightComma(tex, comma, skip) && isDigit(tex[comma - 1]) && isDigit(tex[comma + 1]) && !afterScriptChar(tex, comma);
+
+/**
+ * The run around the comma: everything up to a space, a relation, a unit or spacing command,
+ * or the bracket or brace that encloses it, with nested groups such as `f(3)` or `\sqrt{3}` inside one item.
+ * Its items are split at the commas with no space around them.
+ *
+ * It is a list when it has three or more items and at least one of those commas cannot be a decimal:
+ * `(1,2,\pi)`, `(1,2^2,3)`. When every comma could be a decimal, as in `(2,0-1,0)`, the run is
+ * decimal arithmetic or a list of numbers, and the other rules decide.
+ */
+function isExpressionList(tex: string, comma: number, skip: boolean[]): boolean {
+  const commas = [comma];
+  if (!collectRunCommas(tex, comma, -1, skip, commas) || !collectRunCommas(tex, comma, 1, skip, commas)) return false;
+  return commas.length >= 2 && commas.some((c) => !canBeDecimal(tex, c, skip));
+}
+
+const RUN_STOP_CHARS = new Set(['=', '<', '>', '&', ';', '|']);
+
+/**
+ * Walks from the comma in one direction to the end of the run, adding each comma with no space around it.
+ * Returns false when the walk meets something it does not understand, so the caller falls back to the other rules.
+ */
+function collectRunCommas(tex: string, comma: number, dir: 1 | -1, skip: boolean[], commas: number[]): boolean {
+  let k = comma + dir;
+  while (k >= 0 && k < tex.length) {
+    const ch = tex[k];
+    if (isSpace(ch) || RUN_STOP_CHARS.has(ch)) return true;
+    if (dir === -1 ? escaped(tex, k) : ch === '\\' && !isLetter(tex[k + 1])) return true; // `\,` `\{` `\}`: spacing or a set bracket
+    if (ch === ',') {
+      if (!tightComma(tex, k, skip)) return true;
+      commas.push(k);
+      k += dir;
+      continue;
+    }
+    if (dir === -1 && isLetter(ch)) {
+      let s = k;
+      while (isLetter(tex[s - 1])) s--;
+      if (tex[s - 1] === '\\') {
+        const name = tex.slice(s, k + 1);
+        if (BRACKET_WORDS.has(name) || SIZE_WORDS.has(name) || NOT_IN_ITEM.has(name)) return true;
+        k = s - 2;
+      } else k = s - 1;
+      continue;
+    }
+    if (dir === 1 && ch === '\\') {
+      const name = /^[A-Za-z]+/.exec(tex.slice(k + 1))![0];
+      if (BRACKET_WORDS.has(name) || NOT_IN_ITEM.has(name) || (SIZE_WORDS.has(name) && name !== 'left')) return true;
+      k += 1 + name.length;
+      continue;
+    }
+    // A nested group stays inside one item.
+    const opens = dir === 1 ? '([{' : ')]}';
+    const closes = dir === 1 ? ')]}' : '([{';
+    if (opens.includes(ch)) {
+      const end = groupEnd(tex, k, dir);
+      if (end === -1) return false;
+      k = end + dir;
+      continue;
+    }
+    if (closes.includes(ch)) return true;
+    k += dir;
+  }
+  return true;
+}
+
+/** Index of the bracket or brace that matches the one at `k`, walking in `dir`, or -1. Any bracket kind closes any other. */
+function groupEnd(tex: string, k: number, dir: 1 | -1): number {
+  const opens = dir === 1 ? '([{' : ')]}';
+  const closes = dir === 1 ? ')]}' : '([{';
+  let depth = 0;
+  for (let i = k; i >= 0 && i < tex.length; i += dir) {
+    if (dir === 1 ? tex[i] === '\\' : escaped(tex, i)) {
+      if (dir === 1) i++;
+      continue;
+    }
+    if (opens.includes(tex[i])) depth++;
+    else if (closes.includes(tex[i]) && --depth === 0) return i;
+  }
+  return -1;
 }

@@ -187,9 +187,11 @@ Una virgola fra due cifre, senza spazi attorno, è decimale, tranne in questi ca
 | Caso | Esempi |
 |------|--------|
 | Elenco di tre o più elementi uniti da virgole senza spazi. Gli elementi sono numeri, anche con segno, lettere singole o `\dots` | `(3,1,-1)`, `m_l=-1,0,1`, `k=0,1,2,3`, `\{0,1,2,\dots\}` |
+| Elenco di tre o più elementi qualsiasi, senza spazi, quando almeno una delle sue virgole non può essere decimale | `(1,2,\pi)`, `(1,2^2,3)`, `(1,2,\sqrt{3})` |
 | Due elementi che sono tutto il contenuto di una coppia di parentesi: `()`, `[]`, `\{ \}`, `\lbrack \rbrack`, `\langle \rangle`, anche con `\left`/`\right` o `\bigl`/`\bigr`, anche misti o rovesciati | `(3,4)`, `(-3,4)`, `[0,1)`, `]0,1[`, `\lbrack -1,1\rbrack`, `\vec v=(2,2)\,\mathrm{m/s}` |
 | Come sopra, quando un estremo è un'espressione senza spazi, unità o relazioni | `\lbrack 0,2\pi\lbrack`, `(1,1+\varepsilon)`, `(-\sqrt2,0)`, `(6-2,8)` |
-| Due elementi che sono tutto il contenuto di un pedice o di un esponente fra graffe | `x_{1,2}`, `\lambda_{1,2}` |
+| Due elementi che sono tutto il contenuto di un pedice o di un esponente fra graffe. In un pedice anche con segno | `x_{1,2}`, `\lambda_{1,2}`, `a_{-1,2}` |
+| Virgola subito dopo un apice o un pedice di un solo carattere, che non può far parte di un numero | `x^2,5`, `a_1,2` |
 
 Restano decimali, anche fra parentesi:
 
@@ -198,7 +200,8 @@ Restano decimali, anche fra parentesi:
 - l'argomento di una funzione di una variabile: `\log(2,5)`, `\sin(0,5)`;
 - un numero con lo zero iniziale dopo la virgola, che un intero non ha: `(1,00)`, `(0,05)`;
 - un numero in notazione scientifica: `(6,67\cdot10^{-11})`;
-- un esponente con segno: `10^{-9,52}`.
+- un esponente con segno: `10^{-9,52}`;
+- conti fra decimali in una parentesi, quando ogni virgola può essere decimale: `(2,0-1,0)`, `(0,5\cdot 2,0)`, `\arctan(4,0/3,0)`.
 
 La regola non tocca mai il testo dentro `\text{…}`, `\textbf{…}`, `\mbox{…}`, `\operatorname{…}` e comandi simili, né le dimensioni (`\hspace{1,5em}`). Una formula che scrive già qualche decimale come `{,}` resta com'è: chi l'ha scritta ha segnato i decimali a mano, quindi le altre virgole sono separatori.
 
