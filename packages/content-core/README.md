@@ -9,10 +9,10 @@ Spec: [`spec/content-format.md`](../../spec/content-format.md), format version i
 Each release has an npm tarball attached. Pin it by URL:
 
 ```bash
-npm install https://github.com/SuperTost100/politost-content/releases/download/content-core-v0.7.0/politost-content-core-0.7.0.tgz
+npm install https://github.com/SuperTost100/politost-content/releases/download/content-core-v0.7.1/politost-content-core-0.7.1.tgz
 ```
 
-Or download the `.tgz` and vendor it (`"@politost/content-core": "file:vendor/politost-content-core-0.7.0.tgz"`). Releases up to v0.2.1 had the package at the repository root, so `https://codeload.github.com/SuperTost100/politost-content/tar.gz/refs/tags/v0.2.1` still works for those.
+Or download the `.tgz` and vendor it (`"@politost/content-core": "file:vendor/politost-content-core-0.7.1.tgz"`). Releases up to v0.2.1 had the package at the repository root, so `https://codeload.github.com/SuperTost100/politost-content/tar.gz/refs/tags/v0.2.1` still works for those.
 
 The package ships TypeScript source (`exports` points to `src/index.ts`). Consumers need a bundler or `tsx`.
 
@@ -33,6 +33,27 @@ npm ci && npm test && npm run typecheck
 - Types in `types/smartbook.ts`
 
 `readPtsb` and `parsePtsbEntries` return non-fatal validation notices in `bundle.warnings`. Display them to readers, especially when a book declares a newer content-format version. Invalid bundles still throw.
+
+### Validation options
+
+`validateBundle(config, chapterFiles, assets, extras, options)`, `parsePtsbEntries(entries, options)` and `readPtsb(bytes, limits, options)` take the same `BundleValidateOptions`. `validateChapter(raw, number, options)` takes `ValidateChapterOptions`, which has the same `profile`, `strict` and `latex` fields.
+
+| Option    | Default                                                          | Meaning                                                                                                                                                             |
+| --------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `profile` | `'ship'` for bundles and packages, `'dev'` for `validateChapter` | `'ship'` makes missing assets, broken formula references, unpaired `**`, shorthand formula blocks and leftover generator notes errors. `'dev'` makes them warnings. |
+| `strict`  | not set                                                          | `true` is the same as `profile: 'ship'`. On bundles and packages, `false` is the same as `profile: 'dev'`.                                                          |
+| `latex`   | `true`                                                           | `false` skips the KaTeX check of formulas and keeps every other check.                                                                                              |
+
+The formula check is most of the cost of validating a book, because it renders every distinct formula with KaTeX: some formulas, such as `\genfrac{(}{!}{}{}{a}{b}`, parse cleanly and fail only while KaTeX builds the output. Pass `latex: false` only when the caller has checked the package bytes against a hash published by a pipeline that ran the full validation, such as a catalog book whose SHA-256 matches the catalog. A book from anywhere else, such as a file the reader opens from disk, needs the full check.
+
+```ts
+const book = readPtsb(bytes, undefined, { latex: false }); // only after the hash check
+```
+
+## Changes in 0.7.1
+
+- The full check is about 20% faster: Fisica 1 takes 460 ms instead of 570 ms, Analisi Matematica 2 455 ms instead of 570 ms (Node 24, median of 5). It still renders every formula with KaTeX, as 0.7.0 did, but each distinct formula once per book, and each chapter is parsed and code-blanked once. Errors and warnings are identical to 0.7.0 on the five books in politost-books and on 90 broken formulas.
+- New option `latex: false` skips the formula check, for packages verified against a published hash. `validateBundle` and `validateChapter` take it in their options, and `readPtsb(bytes, limits, options)` and `parsePtsbEntries(entries, options)` now take the bundle options and pass them to `validateBundle`. See [Validation options](#validation-options). It is the only fast path: with it, the two books above validate in 21 ms and 13 ms.
 
 ## Changes in 0.7.0
 

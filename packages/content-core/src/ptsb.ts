@@ -1,7 +1,7 @@
 import { unzipSync, zipSync } from 'fflate';
 import type { Zippable } from 'fflate';
 import { isValidAssetPath } from './assetResolver';
-import { validateBundle } from './validateChapter';
+import { validateBundle, type BundleValidateOptions } from './validateChapter';
 import type { GraficoConfig, IdeSnippet, SmartbookConfig } from './types/smartbook';
 
 /** Limits applied before and after unzipping, so a hostile archive cannot exhaust memory. */
@@ -186,8 +186,9 @@ function parseJson<T>(bytes: Uint8Array, name: string): T {
 /**
  * Parse and validate the entries of a plain package: the unzipped `.ptsb`, or the decrypted
  * payload of an encrypted one. Throws with the validator's error list when the bundle is invalid.
+ * `options` goes to validateBundle: `{ latex: false }` skips the formula check, as described there.
  */
-export function parsePtsbEntries(entries: Record<string, Uint8Array>): PtsbBundle {
+export function parsePtsbEntries(entries: Record<string, Uint8Array>, options?: BundleValidateOptions): PtsbBundle {
   if (!entries['smartbook.json']) {
     throw new Error('smartbook.json mancante nel pacchetto');
   }
@@ -215,7 +216,7 @@ export function parsePtsbEntries(entries: Record<string, Uint8Array>): PtsbBundl
   const ideRaw = text('ide.json');
   const graficiRaw = text('grafici.json');
 
-  const validation = validateBundle(config, chapterFiles, assets, { eserciziRaw, esamiRaw, ideRaw, graficiRaw });
+  const validation = validateBundle(config, chapterFiles, assets, { eserciziRaw, esamiRaw, ideRaw, graficiRaw }, options);
   if (!validation.valid) {
     throw new Error(validation.errors.join('\n'));
   }
@@ -233,8 +234,12 @@ export function parsePtsbEntries(entries: Record<string, Uint8Array>): PtsbBundl
   };
 }
 
-/** Read a plain `.ptsb`. Encrypted packages throw: opening them needs the PoliTost platform. */
-export function readPtsb(bytes: Uint8Array, limits: ZipLimits = PTSB_ZIP_LIMITS): PtsbBundle {
+/** Read a plain `.ptsb`. Encrypted packages throw: opening them needs the PoliTost platform. `options` as in parsePtsbEntries. */
+export function readPtsb(
+  bytes: Uint8Array,
+  limits: ZipLimits = PTSB_ZIP_LIMITS,
+  options?: BundleValidateOptions,
+): PtsbBundle {
   const kind = ptsbKind(bytes);
   if (kind === 'encrypted') {
     throw new Error('Libro protetto: richiede la piattaforma PoliTost.');
@@ -242,7 +247,7 @@ export function readPtsb(bytes: Uint8Array, limits: ZipLimits = PTSB_ZIP_LIMITS)
   if (kind === 'unknown') {
     throw new Error('Formato file non riconosciuto. Usa un file .ptsb valido.');
   }
-  return parsePtsbEntries(safeUnzip(bytes, limits));
+  return parsePtsbEntries(safeUnzip(bytes, limits), options);
 }
 
 /** `ptsb.json` of a plain package, or null when it is missing, unreadable or over the limits. */
