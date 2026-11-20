@@ -1,6 +1,6 @@
 {
   "name": "@politost/content-core",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -16,7 +16,8 @@
   ],
   "scripts": {
     "test": "tsx --test tests/*.test.ts",
-    "typecheck": "tsc --noEmit -p ."
+    "typecheck": "tsc --noEmit -p .",
+    "test:corpus": "tsx tests/corpus/trustedMath.corpus.ts"
   },
   "dependencies": {
     "dompurify": "^3.4.18",

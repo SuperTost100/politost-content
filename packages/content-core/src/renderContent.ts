@@ -1,6 +1,7 @@
 import MarkdownIt, { type Token } from 'markdown-it';
-import { renderKatex } from './decimalComma';
+import { renderKatexChecked } from './decimalComma';
 import { escapeHtml, sanitizeHtml } from './sanitizeHtml';
+import { sanitizeAroundMath, trustedMathSlot, type RenderOptions } from './trustedMath';
 import {
   THEOREM_KINDS,
   boxEnd,
@@ -77,8 +78,8 @@ export function blankCode(text: string): string {
  * Ref slots first, so code inside a link label cannot split the link; then math, leaving code untouched.
  * A ref inside code is put back by restoreSlotSource.
  */
-function extractSlots(text: string): { text: string; ctx: SlotContext } {
-  const ctx: SlotContext = { math: [], refs: [] };
+function extractSlots(text: string, trusted: boolean): { text: string; ctx: SlotContext } {
+  const ctx: SlotContext = { math: [], refs: [], trusted };
   const withRefs = extractRefSlots(text, ctx.math, ctx.refs).text;
   return { text: extractMathOutsideCode(withRefs, ctx.math), ctx };
 }
@@ -100,13 +101,35 @@ function restoreSlotSource(text: string, math: MathSlot[], refs: RefSlot[]): str
     .replace(new RegExp(`${REF_SLOT}(\\d+)${REF_SLOT}`, 'g'), (_, i) => refs[Number(i)]?.source ?? '');
 }
 
-function renderMathSlot({ tex, display }: MathSlot): string {
+function renderMathSlot(slot: MathSlot): string {
+  return renderMathSlotChecked(slot).html;
+}
+
+/** `error` is true when KaTeX failed, so the HTML holds the source or KaTeX's error message. */
+function renderMathSlotChecked({ tex, display }: MathSlot): { html: string; error: boolean } {
   try {
-    const html = renderKatex(tex, display);
-    return display ? `<span class="katex-block">${html}</span>` : html;
+    const { html, error } = renderKatexChecked(tex, display);
+    return { html: display ? `<span class="katex-block">${html}</span>` : html, error };
   } catch {
-    return display ? `<span class="katex-error">${escapeHtml(tex)}</span>` : escapeHtml(tex);
+    return { html: display ? `<span class="katex-error">${escapeHtml(tex)}</span>` : escapeHtml(tex), error: true };
   }
+}
+
+/**
+ * `html` (escaped text, `<code>` and `<br>` with math slots in it) with the formulas rendered,
+ * sanitized. Trusted: formulas that rendered cleanly go in after DOMPurify, and a formula that
+ * failed is sanitized with the text around it.
+ */
+function safeHtml(html: string, math: MathSlot[], trusted: boolean): string {
+  if (!trusted) return sanitizeHtml(html.replace(MATH_SLOT_RE, (_, idx) => renderMathSlot(math[Number(idx)])));
+  const katex: string[] = [];
+  const slotted = html.replace(MATH_SLOT_RE, (_, idx) => {
+    const { html: out, error } = renderMathSlotChecked(math[Number(idx)]);
+    if (error) return out;
+    katex.push(out);
+    return trustedMathSlot(katex.length - 1);
+  });
+  return sanitizeAroundMath(slotted, katex) ?? safeHtml(html, math, false);
 }
 
 /** Render LaTeX inline ($...$) and block ($$...$$) inside a plain-text segment */
@@ -164,10 +187,14 @@ const SAFE_HREF_RE = /^(https?:|mailto:)/i;
 interface SlotContext {
   math: MathSlot[];
   refs: RefSlot[];
+  /** RenderOptions.mathTrusted */
+  trusted: boolean;
 }
 
+/** Trusted text keeps its math slots until sanitizeSegments, which renders them around DOMPurify. */
 function textToHtml(text: string, ctx: SlotContext): string {
-  return escapeHtml(text).replace(MATH_SLOT_RE, (_, idx) => renderMathSlot(ctx.math[Number(idx)]));
+  const escaped = escapeHtml(text);
+  return ctx.trusted ? escaped : escaped.replace(MATH_SLOT_RE, (_, idx) => renderMathSlot(ctx.math[Number(idx)]));
 }
 
 function inlineFromTokens(children: Token[], ctx: SlotContext): InlineSegment[] {
@@ -245,13 +272,13 @@ function inlineFromTokens(children: Token[], ctx: SlotContext): InlineSegment[] 
     }
   }
 
-  return sanitizeSegments(root);
+  return sanitizeSegments(root, ctx);
 }
 
-function sanitizeSegments(segments: InlineSegment[]): InlineSegment[] {
+function sanitizeSegments(segments: InlineSegment[], ctx: SlotContext): InlineSegment[] {
   for (const seg of segments) {
-    if (seg.type === 'text') seg.html = sanitizeHtml(seg.html);
-    else if ('children' in seg) sanitizeSegments(seg.children);
+    if (seg.type === 'text') seg.html = ctx.trusted ? safeHtml(seg.html, ctx.math, true) : sanitizeHtml(seg.html);
+    else if ('children' in seg) sanitizeSegments(seg.children, ctx);
   }
   return segments;
 }
@@ -262,8 +289,8 @@ function parseInlineSlotted(text: string, ctx: SlotContext): InlineSegment[] {
 }
 
 /** Inline markdown (bold, italic, code, math, hovers, links) as a segment tree */
-export function parseInlineSegments(text: string): InlineSegment[] {
-  const { text: slotted, ctx } = extractSlots(text);
+export function parseInlineSegments(text: string, options: RenderOptions = {}): InlineSegment[] {
+  const { text: slotted, ctx } = extractSlots(text, options.mathTrusted === true);
   return parseInlineSlotted(slotted, ctx);
 }
 
@@ -288,8 +315,8 @@ export function segmentsToHtml(segments: InlineSegment[]): string {
 }
 
 /** Inline-only HTML string, no block wrappers */
-export function renderInlineFragment(text: string): string {
-  return segmentsToHtml(parseInlineSegments(text));
+export function renderInlineFragment(text: string, options: RenderOptions = {}): string {
+  return segmentsToHtml(parseInlineSegments(text, options));
 }
 
 /** Paragraph made of a single display-math slot → standalone math block */
@@ -297,11 +324,14 @@ function displayMathOnly(inline: Token | undefined, ctx: SlotContext): string | 
   const only = inline?.children?.length === 1 ? inline.children[0] : null;
   const m = only?.type === 'text' ? only.content.trim().match(new RegExp(`^${MATH_SLOT}(\\d+)${MATH_SLOT}$`)) : null;
   const slot = m ? ctx.math[Number(m[1])] : null;
-  return slot?.display ? sanitizeHtml(renderMathSlot(slot)) : null;
+  if (!slot?.display) return null;
+  if (!ctx.trusted) return sanitizeHtml(renderMathSlot(slot));
+  const { html, error } = renderMathSlotChecked(slot);
+  return error ? sanitizeHtml(html) : html;
 }
 
-function blocksFromMarkdown(text: string): ContentBlock[] {
-  const { text: slotted, ctx } = extractSlots(text);
+function blocksFromMarkdown(text: string, trusted: boolean): ContentBlock[] {
+  const { text: slotted, ctx } = extractSlots(text, trusted);
   const tokens = md.parse(slotted, {});
 
   const root: ContentBlock[] = [];
@@ -395,21 +425,22 @@ function parseImageMarker(chunk: string): ContentBlock | null {
  * Parse smartbook body into blocks; numbered formulas and images split the markdown flow,
  * and box blocks (`:::theorem` and the others) hold their own blocks.
  */
-export function parseContentBlocks(content: string): ContentBlock[] {
+export function parseContentBlocks(content: string, options: RenderOptions = {}): ContentBlock[] {
   if (!content) return [];
+  const trusted = options.mathTrusted === true;
   const text = normalizeNewlines(content);
   const blanked = blankCode(text);
   // Text without boxes takes the same path as before boxes existed.
-  if (!hasBoxOpening(blanked)) return parseFlowBlocks(content);
+  if (!hasBoxOpening(blanked)) return parseFlowBlocks(content, trusted);
 
   const lines = text.split('\n');
   const slice = (from: number, to: number) => lines.slice(from, to).join('\n');
   const blocks: ContentBlock[] = [];
   let cursor = 0;
   for (const span of scanBoxes(lines, blanked.split('\n'))) {
-    blocks.push(...parseFlowBlocks(slice(cursor, span.open)));
+    blocks.push(...parseFlowBlocks(slice(cursor, span.open), trusted));
     const kind = span.attrs.kind;
-    const { title, blocks: inner } = boxContent(span, lines);
+    const { title, blocks: inner } = boxContent(span, lines, trusted);
     blocks.push({
       type: 'box',
       box: span.name,
@@ -417,11 +448,11 @@ export function parseContentBlocks(content: string): ContentBlock[] {
       ...(span.name !== 'proof' && span.attrs.id ? { id: span.attrs.id } : {}),
       ...(title ? { title } : {}),
       blocks: inner,
-      ...(span.proof ? { proof: boxContent(span.proof, lines) } : {}),
+      ...(span.proof ? { proof: boxContent(span.proof, lines, trusted) } : {}),
     });
     cursor = boxEnd(span, lines.length);
   }
-  blocks.push(...parseFlowBlocks(slice(cursor, lines.length)));
+  blocks.push(...parseFlowBlocks(slice(cursor, lines.length), trusted));
   return blocks;
 }
 
@@ -429,16 +460,22 @@ const isTheoremKind = (value: string | undefined): value is TheoremKind =>
   (THEOREM_KINDS as readonly (string | undefined)[]).includes(value);
 
 /** Title and body of a box. An unclosed box takes every line to the end of `lines`. */
-function boxContent(span: BoxSpan, lines: string[]): BoxProof {
+function boxContent(span: BoxSpan, lines: string[], trusted: boolean): BoxProof {
   const body = lines.slice(span.open + 1, span.close === -1 ? lines.length : span.close).join('\n');
   const title = span.attrs.title?.trim();
   return {
-    ...(title ? { title: [{ type: 'text' as const, html: sanitizeHtml(renderLatexInText(title)) }] } : {}),
-    blocks: parseContentBlocks(body),
+    ...(title ? { title: [{ type: 'text' as const, html: latexInTextSafe(title, trusted) }] } : {}),
+    blocks: parseContentBlocks(body, { mathTrusted: trusted }),
   };
 }
 
-function parseFlowBlocks(content: string): ContentBlock[] {
+/** renderLatexInText, sanitized */
+function latexInTextSafe(text: string, trusted: boolean): string {
+  const { text: slotted, slots } = extractMathSlots(text);
+  return safeHtml(escapeHtml(slotted), slots, trusted);
+}
+
+function parseFlowBlocks(content: string, trusted: boolean): ContentBlock[] {
   if (!content) return [];
 
   const blocks: ContentBlock[] = [];
@@ -447,7 +484,7 @@ function parseFlowBlocks(content: string): ContentBlock[] {
   let match: RegExpExecArray | null;
 
   const appendMarkdown = (text: string) => {
-    if (text.trim()) blocks.push(...blocksFromMarkdown(text));
+    if (text.trim()) blocks.push(...blocksFromMarkdown(text, trusted));
   };
 
   while ((match = re.exec(content)) !== null) {

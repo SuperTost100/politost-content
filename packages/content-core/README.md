@@ -50,6 +50,30 @@ The formula check is most of the cost of validating a book, because it renders e
 const book = readPtsb(bytes, undefined, { latex: false }); // only after the hash check
 ```
 
+### Trusted math
+
+`parseContentBlocks`, `parseInlineSegments`, `renderInlineFragment`, `renderFormulaHtml` and `renderNumberedFormulaHtml` return sanitized HTML and take `RenderOptions` as their last argument. With `{ mathTrusted: true }`, a formula that KaTeX renders without an error goes into the HTML as KaTeX produced it, without DOMPurify. Everything else is sanitized exactly as before: Markdown text, raw HTML written in the content, box titles, link labels, formula labels and numbers, prose formulas (`\text{…}` alone) and formulas that fail. The default is `false`, and its output is byte for byte the same as 0.7.1. `renderLatexInText`, `renderFormulaLatex` and `renderDisplayTex` still return HTML that is not sanitized, whatever the caller trusts.
+
+DOMPurify spends most of its time on KaTeX's output, which is large: in the reader, skipping it for formulas took the print of the whole of Fisica 1 from 9.5 s to 5.9 s. Pass `mathTrusted: true` only for content whose source the app trusts, under the same rule as `latex: false`: a package whose bytes matched a hash published by a pipeline that ran the full validation, or content the app ships itself. A file opened from disk keeps the default.
+
+Skipping DOMPurify is safe for KaTeX output because of these conditions, and each has a test in `tests/trustedMath.test.ts` that fails if it changes:
+
+- content-core calls KaTeX with `displayMode` and `throwOnError` only. `trust` stays off, so `\href`, `\url`, `\includegraphics`, `\htmlClass`, `\htmlId`, `\htmlStyle` and `\htmlData` render as red text, never as links, images, classes, ids, styles or `data-` attributes. `strict`, `maxSize` and `maxExpand` keep KaTeX's defaults, so a macro that expands without end fails.
+- A formula that fails goes through DOMPurify with the text around it. KaTeX's error span carries the source and the error message in a `title`, which DOMPurify removes.
+- KaTeX escapes every piece of source it writes back (in the MathML annotation and in text), and its attribute values come from fixed tables or from checked input: `\color` and `\colorbox` accept only color names and hex codes.
+- Each trusted formula is put in through a placeholder (U+E002, its index, U+E002) that sits in escaped text, so after DOMPurify the formula goes in where a text node was. If the text itself contains U+E002, the call falls back to the untrusted output.
+- The decimal comma rule (`decimalCommas`) applies on both paths.
+
+The same test file renders 48 hostile formulas (`tests/trustedMathAllowlist.ts`: `\href{javascript:…}`, `\unicode`, `\char`, `<script>` in `\text{}`, entity tricks, `\def` and `\newcommand` loops, odd `\color` values, huge `\rule` sizes, `\verb`, and more) and walks the parsed DOM of the trusted output with an allowlist of elements and attributes. 32 of them render without an error and take the trusted path; none produces an element, attribute or URL outside KaTeX's own.
+
+To compare the two paths over real books, run `npm run test:corpus -- <folder>` on a folder with one folder per book, such as `books/` in politost-books. It renders every chapter text, exercise and numbered formula both ways and fails if the DOMs differ in anything but what DOMPurify drops from KaTeX's output, which it lists. On the books in politost-books at 90813a7 (27,868 HTML pieces), DOMPurify drops only MathML that screen readers read and nobody sees: the `linebreak` attribute of `<mspace>` (2 times) and `<mover>` or `<munder>` nested directly in `<mi>` or `<mo>` (15 times, as in `\overset{\mathrm{def}}{=}`). The trusted output keeps them as KaTeX wrote them. The visible formula comes from KaTeX's HTML part, which is identical on both paths.
+
+## Changes in 0.7.2
+
+- New option `mathTrusted` on `parseContentBlocks`, `parseInlineSegments`, `renderInlineFragment` and `renderNumberedFormulaHtml`, and a new function `renderFormulaHtml(latex, options)`, which is `renderFormulaLatex` sanitized. With `{ mathTrusted: true }` KaTeX's output for formulas skips DOMPurify. See [Trusted math](#trusted-math) for when to pass it and why it is safe. Without it the output is unchanged: the 3,596 chapter texts, exercises and numbered formulas of the five books in politost-books give the same bytes as 0.7.1.
+- New type export `RenderOptions`.
+- New script `npm run test:corpus -- <folder>` compares the trusted and sanitized output over a folder of books.
+
 ## Changes in 0.7.1
 
 - The full check is about 20% faster: Fisica 1 takes 460 ms instead of 570 ms, Analisi Matematica 2 455 ms instead of 570 ms (Node 24, median of 5). It still renders every formula with KaTeX, as 0.7.0 did, but each distinct formula once per book, and each chapter is parsed and code-blanked once. Errors and warnings are identical to 0.7.0 on the five books in politost-books and on 90 broken formulas.
