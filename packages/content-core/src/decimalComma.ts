@@ -5,15 +5,31 @@ import katex from 'katex';
  * If the rewritten source fails where the original would not, the original is rendered as written.
  */
 export function renderKatex(tex: string, displayMode: boolean): string {
+  return renderKatexChecked(tex, displayMode).html;
+}
+
+/**
+ * renderKatex, and whether KaTeX failed. On a parse error `html` is KaTeX's error span, which
+ * carries the source and the message in a `title`, so callers that skip DOMPurify must sanitize it.
+ * These options are the only ones content-core passes to KaTeX: `trust` stays off, so `\href`,
+ * `\url`, `\includegraphics` and the `\html…` commands render as errors or as plain text, and
+ * `strict`, `maxSize` and `maxExpand` keep KaTeX's defaults.
+ */
+export function renderKatexChecked(tex: string, displayMode: boolean): { html: string; error: boolean } {
   const rewritten = decimalCommas(tex);
   if (rewritten !== tex) {
     try {
-      return katex.renderToString(rewritten, { displayMode, throwOnError: true });
+      return { html: katex.renderToString(rewritten, { displayMode, throwOnError: true }), error: false };
     } catch {
-      return katex.renderToString(tex, { displayMode, throwOnError: false });
+      // The source as written, below.
     }
   }
-  return katex.renderToString(tex, { displayMode, throwOnError: false });
+  try {
+    return { html: katex.renderToString(tex, { displayMode, throwOnError: true }), error: false };
+  } catch (err) {
+    if (!(err instanceof katex.ParseError)) throw err;
+    return { html: katex.renderToString(tex, { displayMode, throwOnError: false }), error: true };
+  }
 }
 
 /**

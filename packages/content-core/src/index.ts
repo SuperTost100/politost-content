@@ -42,8 +42,10 @@ export {
   renderDisplayTex,
   renderFormulaLatex,
   renderNumberedFormulaHtml,
+  renderFormulaHtml,
 } from './formulaRender';
 export type { FormulaRenderVariant } from './formulaRender';
+export type { RenderOptions } from './trustedMath';
 
 export {
   ALLOWED_IMAGE_EXT,
