@@ -1,4 +1,5 @@
-import { normalizeNewlines, opensFence, parseExercises } from './parser';
+import { BOX_OPEN_LIKE, normalizeNewlines, opensFence, parseExercises } from './parser';
+import { blankCode } from './renderContent';
 
 export interface ExerciseValidationResult {
   valid: boolean;
@@ -42,6 +43,12 @@ export function validateExercises(
     errors.push('frontmatter mancante — atteso --- con type');
   } else if (type !== expectedType) {
     errors.push(`type atteso "${expectedType}", trovato "${type}"`);
+  }
+
+  for (const [i, line] of blankCode(raw).split('\n').entries()) {
+    if (BOX_OPEN_LIKE.test(line)) {
+      errors.push(`riga ${i + 1}: ${line.trim().slice(0, 60)} non ammesso negli esercizi, i blocchi come :::theorem stanno nei capitoli`);
+    }
   }
 
   const body = raw.replace(/^---[\s\S]*?---\n*/, '');
