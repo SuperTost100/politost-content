@@ -130,6 +130,18 @@ describe('trusted math: what still goes through DOMPurify', () => {
   });
 });
 
+describe('trusted math: link labels', () => {
+  it('keeps a formula in a link label as KaTeX wrote it, and still sanitizes the label text', async () => {
+    const { parseInlineSegments, segmentsToHtml } = await load();
+    // KaTeX writes linebreak="newline" for \\, which DOMPurify would drop.
+    const html = segmentsToHtml(parseInlineSegments('[[link:chapter/1#p1|vedi $a\\\\b$ <b>x</b>]]', TRUSTED));
+    assert.match(html, /linebreak="newline"/);
+    assert.doesNotMatch(html, /<b>x<\/b>/);
+    const plain = segmentsToHtml(parseInlineSegments('[[link:chapter/1#p1|vedi $a\\\\b$ <b>x</b>]]'));
+    assert.doesNotMatch(plain, /linebreak="newline"/);
+  });
+});
+
 describe('trusted math: hostile formulas', () => {
   it(`lets nothing but KaTeX's own elements and attributes through (${HOSTILE_FORMULAS.length} formulas)`, async () => {
     const { parseContentBlocks, renderFormulaHtml, renderNumberedFormulaHtml } = await load();

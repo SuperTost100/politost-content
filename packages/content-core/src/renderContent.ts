@@ -197,7 +197,7 @@ function textToHtml(text: string, ctx: SlotContext): string {
   return ctx.trusted ? escaped : escaped.replace(MATH_SLOT_RE, (_, idx) => renderMathSlot(ctx.math[Number(idx)]));
 }
 
-function inlineFromTokens(children: Token[], ctx: SlotContext): InlineSegment[] {
+function inlineFromTokens(children: Token[], ctx: SlotContext, finalize = true): InlineSegment[] {
   const root: InlineSegment[] = [];
   const stack: InlineSegment[][] = [root];
   const current = () => stack[stack.length - 1];
@@ -221,7 +221,7 @@ function inlineFromTokens(children: Token[], ctx: SlotContext): InlineSegment[] 
       if (slot.kind === 'hover') {
         current().push({ type: 'hover', formulaId: slot.formulaId });
       } else {
-        current().push({ type: 'link', ref: slot.ref, children: parseInlineSlotted(slot.label, ctx) });
+        current().push({ type: 'link', ref: slot.ref, children: parseInlineSlotted(slot.label, ctx, false) });
       }
     }
   };
@@ -272,7 +272,8 @@ function inlineFromTokens(children: Token[], ctx: SlotContext): InlineSegment[] 
     }
   }
 
-  return sanitizeSegments(root, ctx);
+  // A link label is part of the tree around it, which sanitizes every segment once.
+  return finalize ? sanitizeSegments(root, ctx) : root;
 }
 
 function sanitizeSegments(segments: InlineSegment[], ctx: SlotContext): InlineSegment[] {
@@ -283,9 +284,9 @@ function sanitizeSegments(segments: InlineSegment[], ctx: SlotContext): InlineSe
   return segments;
 }
 
-function parseInlineSlotted(text: string, ctx: SlotContext): InlineSegment[] {
+function parseInlineSlotted(text: string, ctx: SlotContext, finalize = true): InlineSegment[] {
   const tokens = md.parseInline(text, {});
-  return inlineFromTokens(tokens[0]?.children ?? [], ctx);
+  return inlineFromTokens(tokens[0]?.children ?? [], ctx, finalize);
 }
 
 /** Inline markdown (bold, italic, code, math, hovers, links) as a segment tree */
