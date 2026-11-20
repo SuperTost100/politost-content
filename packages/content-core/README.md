@@ -9,10 +9,10 @@ Spec: [`spec/content-format.md`](../../spec/content-format.md), format version i
 Each release has an npm tarball attached. Pin it by URL:
 
 ```bash
-npm install https://github.com/SuperTost100/politost-content/releases/download/content-core-v0.6.0/politost-content-core-0.6.0.tgz
+npm install https://github.com/SuperTost100/politost-content/releases/download/content-core-v0.7.0/politost-content-core-0.7.0.tgz
 ```
 
-Or download the `.tgz` and vendor it (`"@politost/content-core": "file:vendor/politost-content-core-0.6.0.tgz"`). Releases up to v0.2.1 had the package at the repository root, so `https://codeload.github.com/SuperTost100/politost-content/tar.gz/refs/tags/v0.2.1` still works for those.
+Or download the `.tgz` and vendor it (`"@politost/content-core": "file:vendor/politost-content-core-0.7.0.tgz"`). Releases up to v0.2.1 had the package at the repository root, so `https://codeload.github.com/SuperTost100/politost-content/tar.gz/refs/tags/v0.2.1` still works for those.
 
 The package ships TypeScript source (`exports` points to `src/index.ts`). Consumers need a bundler or `tsx`.
 
@@ -33,6 +33,29 @@ npm ci && npm test && npm run typecheck
 - Types in `types/smartbook.ts`
 
 `readPtsb` and `parsePtsbEntries` return non-fatal validation notices in `bundle.warnings`. Display them to readers, especially when a book declares a newer content-format version. Invalid bundles still throw.
+
+## Changes in 0.7.0
+
+- Content format 1.3: definitions, theorems, proofs, examples, typical mistakes and remarks are blocks (`:::definition`, `:::theorem`, `:::proof`, `:::example`, `:::mistake`, `:::remark`) with optional `id`, `title` and, on a theorem, `kind` (`proposition`, `corollary`, `lemma`). The grammar is in the spec under "Blocchi". `CONTENT_FORMAT_VERSION` is `1.3`, so a 0.6.x reader shows its "newer format" notice for a book that declares `specVersion: "1.3"`, and shows the `:::` lines as text.
+- `parseContentBlocks` returns a new `ContentBlock` member for them:
+
+  ```ts
+  interface BoxBlock {
+    type: 'box';
+    box: 'definition' | 'theorem' | 'proof' | 'example' | 'mistake' | 'remark';
+    kind?: 'proposition' | 'corollary' | 'lemma'; // theorem only
+    id?: string; // never on a proof
+    title?: InlineSegment[]; // text with inline math
+    blocks: ContentBlock[];
+    proof?: { title?: InlineSegment[]; blocks: ContentBlock[] }; // a proof right after a theorem
+  }
+  ```
+
+  Code that switches over `ContentBlock['type']` needs a `box` case. Text without these blocks parses exactly as in 0.6.0: the 51 chapters of the four published books give the same output.
+- A `:::formula` inside a box stays a numbered formula of the chapter, in `Chapter.formulas` and in the formula sheet.
+- `validateChapter` checks the boxes (opening lines, attributes, ids repeated within a block name, `kind`, empty bodies, nesting, unclosed blocks with their line) and returns them in `boxes`. `validateBundle` reports an id repeated across chapters and warns when a book with boxes declares a `specVersion` older than 1.3. `validateExercises` reports a box inside an exercise.
+- New exports: `BOX_NAMES`, `THEOREM_KINDS` and the types `BoxBlock`, `BoxProof`, `BoxName`, `TheoremKind`.
+- `parseExercises` counts a bare `:::proof` (or another box name) as an opening line, so a box inside an exercise no longer ends the exercise early.
 
 ## Changes in 0.6.0
 
