@@ -353,7 +353,8 @@ export function scanBoxes(lines: string[], blanked: string[] = lines): BoxSpan[]
     }
     if (span.name === 'theorem' && span.close !== -1) {
       let j = span.close + 1;
-      while (j < lines.length && !blanked[j].trim()) j++;
+      // Blank in the source: a code block, blanked for fence matching, is not a blank line.
+      while (j < lines.length && !lines[j].trim()) j++;
       const proof = j < lines.length ? spanAt(j) : null;
       if (proof?.name === 'proof') span.proof = proof;
     }

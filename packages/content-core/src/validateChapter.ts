@@ -245,8 +245,9 @@ function validateBoxes(raw: string, errors: string[], warnings: string[]): Chapt
     }
     const body = blanked.slice(from, to);
     const first = body.find((line) => line.trim());
-    if (first === undefined) errors.push(`${at}: corpo vuoto`);
-    else if (LEFTOVER_LABEL.test(first.trim())) {
+    // A body of code only is blank once blanked, so emptiness is read from the source lines.
+    if (!lines.slice(from, to).some((line) => line.trim())) errors.push(`${at}: corpo vuoto`);
+    else if (first !== undefined && LEFTOVER_LABEL.test(first.trim())) {
       warnings.push(`${at}: il corpo comincia con l'etichetta in grassetto, ma numero e nome vanno negli attributi`);
     }
     for (const nested of scanBoxes(lines.slice(from, to), body)) {

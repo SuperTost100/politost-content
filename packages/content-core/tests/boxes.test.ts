@@ -93,6 +93,12 @@ describe('box blocks: parseContentBlocks', () => {
     assert.equal(html(thm.proof?.title), 'per induzione');
   });
 
+  it('keeps a code block between a theorem and a proof', async () => {
+    const { parseContentBlocks } = await load();
+    const blocks = parseContentBlocks(':::theorem\nEnunciato.\n:::\n\n```\ncodice\n```\n\n:::proof\nDim.\n:::');
+    assert.equal(plain(blocks), '[theorem]Enunciato.[/]|<code>|[proof]Dim.[/]');
+  });
+
   it('keeps any other proof on its own', async () => {
     const { parseContentBlocks } = await load();
     const afterText = parseContentBlocks(':::theorem\nEnunciato.\n:::\n\nUn commento.\n\n:::proof\nDim.\n:::');
@@ -271,6 +277,11 @@ describe('box blocks: validateChapter', () => {
   it('reports an empty body', async () => {
     const { errors } = await errorsOf(':::remark\n\n:::');
     assert.deepEqual(errors, ['Riga 8: :::remark: corpo vuoto']);
+  });
+
+  it('accepts a body that holds only code', async () => {
+    const { errors } = await errorsOf(':::example\n```\nx = 1\n```\n:::');
+    assert.deepEqual(errors, []);
   });
 
   it('reports boxes and exercise blocks nested in a box', async () => {
