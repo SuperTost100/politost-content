@@ -1,6 +1,6 @@
 import katex from 'katex';
 import { isValidAssetPath, validateAssetSizes } from './assetResolver';
-import type { FormulaRef, IdeSnippet } from './types/smartbook';
+import type { Chapter, FormulaRef, IdeSnippet } from './types/smartbook';
 import { validateExercises } from './validateExercises';
 import {
   BOX_OPEN_LIKE,
@@ -86,8 +86,9 @@ function validateImagesInContent(
   warnings: string[],
   strict: boolean,
   availableAssets?: Set<string>,
+  blanked = blankCode(content),
 ): void {
-  if (hasExternalImageMarkdown(blankCode(content))) {
+  if (hasExternalImageMarkdown(blanked)) {
     errors.push(`${context}: immagini markdown non consentite — usa un blocco :::image`);
   }
 
@@ -194,9 +195,12 @@ function buildMayFail(node: unknown): boolean {
     if (ASTRAL.test(n.text)) return true;
     if (n.mode === 'text' && (n.text.startsWith('\\') || !PLAIN_TEXT.test(n.text))) return true;
   }
-  for (const [key, value] of Object.entries(node)) {
+  const fields = node as Record<string, unknown>;
+  for (const key in fields) {
     // `loc` points back to the lexer and the whole source.
-    if (key !== 'loc' && buildMayFail(value)) return true;
+    if (key === 'loc') continue;
+    const value = fields[key];
+    if (value !== null && typeof value === 'object' && buildMayFail(value)) return true;
   }
   return false;
 }
@@ -211,24 +215,40 @@ export function checkTex(tex: string, displayMode: boolean, parse: KatexParse | 
   katex.renderToString(tex, options);
 }
 
+/**
+ * KaTeX's error message for each formula already checked, or null when it is valid. Keys start with D for display
+ * and I for inline. A book checks many formulas more than once: every numbered formula with its paragraph and
+ * on its own, and short ones like `$x$` everywhere.
+ */
+type LatexCache = Map<string, string | null>;
+
+function texError(tex: string, displayMode: boolean, cache: LatexCache): string | null {
+  const key = (displayMode ? 'D' : 'I') + tex;
+  let error = cache.get(key);
+  if (error === undefined) {
+    try {
+      checkTex(tex, displayMode);
+      error = null;
+    } catch (e) {
+      error = (e as Error).message;
+    }
+    cache.set(key, error);
+  }
+  return error;
+}
+
 /** `findings` is the errors list, or the warnings list where invalid LaTeX must not block a book. */
-function validateLatex(latex: string, context: string, findings: string[]): void {
+function validateLatex(latex: string, context: string, findings: string[], cache: LatexCache): void {
   const blocks = [...latex.matchAll(/\$\$([\s\S]*?)\$\$/g)].map((m) => m[1].trim());
   const inlines = [...latex.matchAll(/(?<!\$)\$([^$\n]+)\$/g)].map((m) => m[1].trim());
 
   for (const block of blocks) {
-    try {
-      checkTex(block, true);
-    } catch (e) {
-      findings.push(`${context}: LaTeX display invalido — ${(e as Error).message}`);
-    }
+    const error = texError(block, true, cache);
+    if (error !== null) findings.push(`${context}: LaTeX display invalido — ${error}`);
   }
   for (const inline of inlines) {
-    try {
-      checkTex(inline, false);
-    } catch (e) {
-      findings.push(`${context}: LaTeX inline invalido — ${(e as Error).message}`);
-    }
+    const error = texError(inline, false, cache);
+    if (error !== null) findings.push(`${context}: LaTeX inline invalido — ${error}`);
   }
 }
 
@@ -254,9 +274,9 @@ export interface ChapterBox {
  * Box blocks (`:::theorem` and the others) of a chapter, one paragraph at a time, as the parser reads them.
  * Line numbers count from the top of the file, frontmatter included. Returns every box found, attached proofs included.
  */
-function validateBoxes(raw: string, errors: string[], warnings: string[]): ChapterBox[] {
+function validateBoxes(raw: string, blankedRaw: string, errors: string[], warnings: string[]): ChapterBox[] {
   const lines = raw.split('\n');
-  const blanked = blankCode(raw).split('\n');
+  const blanked = blankedRaw.split('\n');
   const found: ChapterBox[] = [];
   const seen = new Map<string, number>();
 
@@ -345,6 +365,17 @@ export function validateChapter(
   chapterNumber: number,
   options?: ValidateChapterOptions,
 ): ChapterValidationResult {
+  return checkChapter(raw, chapterNumber, options, new Map());
+}
+
+function checkChapter(
+  raw: string,
+  chapterNumber: number,
+  options: ValidateChapterOptions | undefined,
+  latexCache: LatexCache,
+  /** parseChapterMarkdown of the same text and number, when the caller has it already. */
+  parsed = parseChapterMarkdown(raw, chapterNumber),
+): ChapterValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
   const strict = shipMode(options);
@@ -352,15 +383,16 @@ export function validateChapter(
   const latex = options?.latex !== false;
   raw = normalizeNewlines(raw);
 
-  const parsed = parseChapterMarkdown(raw, chapterNumber);
   if (parsed.warnings?.length) warnings.push(...parsed.warnings);
 
   if (parsed.paragraphs.length === 0) {
     errors.push('Nessun paragrafo trovato — formato richiesto: ## pN | titolo');
   }
 
+  const blankedRaw = blankCode(raw);
+  const blankedContent = parsed.paragraphs.map((p) => blankCode(p.content));
   const paraIds = new Set<string>();
-  for (const p of parsed.paragraphs) {
+  for (const [i, p] of parsed.paragraphs.entries()) {
     if (paraIds.has(p.id)) {
       errors.push(`ID paragrafo duplicato: ${p.id}`);
     }
@@ -368,13 +400,13 @@ export function validateChapter(
     if (!/^p\d+$/.test(p.id)) {
       errors.push(`ID paragrafo non valido: ${p.id}`);
     }
-    if (latex) validateLatex(blankCode(p.content), `Paragrafo ${p.id}`, errors);
+    if (latex) validateLatex(blankedContent[i], `Paragrafo ${p.id}`, errors, latexCache);
   }
 
-  validateImagesInContent(raw, 'Capitolo', errors, warnings, strict, availableAssets);
-  validateContentQuality(blankCode(raw), errors, warnings, strict);
+  validateImagesInContent(raw, 'Capitolo', errors, warnings, strict, availableAssets, blankedRaw);
+  validateContentQuality(blankedRaw, errors, warnings, strict);
   validateNoToolMarkup(raw, 'Capitolo', errors);
-  const boxes = validateBoxes(raw, errors, warnings);
+  const boxes = validateBoxes(raw, blankedRaw, errors, warnings);
 
   const formulaOpenRe = new RegExp(CANONICAL_FORMULA_OPEN.source, 'gm');
   const openCount = [...raw.matchAll(formulaOpenRe)].length;
@@ -409,12 +441,12 @@ export function validateChapter(
     if (ch !== chapterNumber) {
       errors.push(`Formula ${f.id} appartiene al capitolo ${ch}, atteso ${chapterNumber}`);
     }
-    if (latex) validateLatex(f.latex, `Formula ${f.id}`, errors);
+    if (latex) validateLatex(f.latex, `Formula ${f.id}`, errors, latexCache);
   }
 
   const knownFormula = (id: string) => formulaIds.has(id) || options?.bookFormulaIndex?.has(id) === true;
-  for (const p of parsed.paragraphs) {
-    const content = blankCode(p.content);
+  for (const [i, p] of parsed.paragraphs.entries()) {
+    const content = blankedContent[i];
     for (const m of content.matchAll(HOVER_REF)) {
       const id = m[1];
       if (!knownFormula(id)) {
@@ -512,14 +544,14 @@ function validateConfigShape(
   }
 }
 
-/** Refs, chapter numbers and, unless `latex` is false, LaTeX in esercizi.md / esami.md. Warnings only, so existing books still open. */
+/** Refs, chapter numbers and, when given a `latexCache`, LaTeX in esercizi.md / esami.md. Warnings only, so existing books still open. */
 function validateExerciseRefs(
   raw: string,
   name: string,
   bookParagraphs: Map<number, Set<string>>,
   bookFormulaIndex: Map<string, FormulaRef>,
   warnings: string[],
-  latex: boolean,
+  latexCache: LatexCache | null,
 ): void {
   for (const ex of parseExercises(raw)) {
     const context = `${name}: ${ex.id || 'exercise'}`;
@@ -536,7 +568,7 @@ function validateExerciseRefs(
         : bookParagraphs.get(Number(m[3]))?.has(m[4]) === true;
       if (!found) warnings.push(`${context}: link ref:${m[2]} senza destinazione`);
     }
-    if (latex) validateLatex(text, context, warnings);
+    if (latexCache) validateLatex(text, context, warnings, latexCache);
   }
 }
 
@@ -562,6 +594,7 @@ export function validateBundle(
   const warnings: string[] = [];
   const strict = bundleShipMode(options);
   const latex = options?.latex !== false;
+  const latexCache: LatexCache = new Map();
   const availableAssets = new Set(Object.keys(assets));
 
   errors.push(...validateAssetSizes(assets));
@@ -580,10 +613,12 @@ export function validateBundle(
   errors.push(...meta.errors);
   warnings.push(...meta.warnings);
 
-  const parsedChapters = chapters.flatMap((ch) => {
+  const parsedByChapter = new Map<BundleChapter, Chapter>();
+  for (const ch of chapters) {
     const raw = ch && typeof ch === 'object' ? chapterFiles[ch.file] : undefined;
-    return raw === undefined ? [] : [parseChapterMarkdown(raw, ch.number)];
-  });
+    if (raw !== undefined) parsedByChapter.set(ch, parseChapterMarkdown(raw, ch.number));
+  }
+  const parsedChapters = [...parsedByChapter.values()];
   const bookFormulaIndex = buildFormulaIndex(parsedChapters);
   const bookParagraphs = new Map(parsedChapters.map((c) => [c.meta.number, new Set(c.paragraphs.map((p) => p.id))]));
 
@@ -597,13 +632,13 @@ export function validateBundle(
       errors.push(`File capitolo mancante: ${ch.file}`);
       continue;
     }
-    const result = validateChapter(raw, ch.number, {
+    const result = checkChapter(raw, ch.number, {
       profile: strict ? 'ship' : 'dev',
       availableAssets,
       bookFormulaIndex,
       bookParagraphs,
       latex,
-    });
+    }, latexCache, parsedByChapter.get(ch));
     errors.push(...result.errors.map((e) => `${ch.file}: ${e}`));
     warnings.push(...result.warnings.map((w) => `${ch.file}: ${w}`));
     if (result.boxes.length) usesBoxes = true;
@@ -630,7 +665,7 @@ export function validateBundle(
     const ex = validateExercises(extras.eserciziRaw, 'esercizi');
     errors.push(...ex.errors.map((e) => `esercizi.md: ${e}`));
     warnings.push(...ex.warnings.map((w) => `esercizi.md: ${w}`));
-    validateExerciseRefs(extras.eserciziRaw, 'esercizi.md', bookParagraphs, bookFormulaIndex, warnings, latex);
+    validateExerciseRefs(extras.eserciziRaw, 'esercizi.md', bookParagraphs, bookFormulaIndex, warnings, latex ? latexCache : null);
   }
   if (extras.esamiRaw) {
     validateImagesInContent(extras.esamiRaw, 'esami.md', errors, warnings, strict, availableAssets);
@@ -638,7 +673,7 @@ export function validateBundle(
     const ex = validateExercises(extras.esamiRaw, 'esami');
     errors.push(...ex.errors.map((e) => `esami.md: ${e}`));
     warnings.push(...ex.warnings.map((w) => `esami.md: ${w}`));
-    validateExerciseRefs(extras.esamiRaw, 'esami.md', bookParagraphs, bookFormulaIndex, warnings, latex);
+    validateExerciseRefs(extras.esamiRaw, 'esami.md', bookParagraphs, bookFormulaIndex, warnings, latex ? latexCache : null);
   }
   if (extras.graficiRaw) validateGraficiRaw(extras.graficiRaw, errors, warnings);
   if (extras.ideRaw) validateIdeRaw(extras.ideRaw, errors);
