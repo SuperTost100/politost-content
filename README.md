@@ -31,7 +31,7 @@
 
 | Package                                           | What it is                                                                                                              |
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| [`spec/`](spec)                                   | The content format specification, in Italian like the books. The version is in [`spec/VERSION`](spec/VERSION), now 1.2. |
+| [`spec/`](spec)                                   | The content format specification, in Italian like the books. The version is in [`spec/VERSION`](spec/VERSION), now 1.3. |
 | [`packages/content-core/`](packages/content-core) | `@politost/content-core`: TypeScript parser, renderer, validators and `.ptsb` reader and writer.                        |
 | [`packages/ptsb-pack/`](packages/ptsb-pack)       | `ptsb-pack`: Python CLI that validates a book folder, packs it into a `.ptsb` file, encrypts it and inspects it.        |
 
@@ -68,14 +68,14 @@ $$v = \frac{s}{t}$$
 Come nella {{formula:1.1}}, a parità di spazio un tempo più breve dà una velocità più alta.
 ```
 
-The [full spec](spec/content-format.md) covers every block, the validation rules and the `.ptsb` package.
+Definitions, theorems, proofs, examples, typical mistakes and remarks are blocks too (`:::theorem{id="1.2" title="di Weierstrass"}` … `:::`), which the reader draws as boxes. The [full spec](spec/content-format.md) covers every block, the validation rules and the `.ptsb` package.
 
 ## Install
 
 content-core is not on npm. Each release has a tarball attached, which you pin by URL:
 
 ```bash
-npm install https://github.com/SuperTost100/politost-content/releases/download/content-core-v0.6.0/politost-content-core-0.6.0.tgz
+npm install https://github.com/SuperTost100/politost-content/releases/download/content-core-v0.7.0/politost-content-core-0.7.0.tgz
 ```
 
 The package ships TypeScript source, so use it with a bundler or `tsx`. Add `katex@^0.19.0` to your own dependencies and import its stylesheet, or formulas render wrongly. The [package README](packages/content-core/README.md) has the details.

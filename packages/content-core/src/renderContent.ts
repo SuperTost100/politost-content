@@ -1,6 +1,16 @@
 import MarkdownIt, { type Token } from 'markdown-it';
 import { renderKatex } from './decimalComma';
 import { escapeHtml, sanitizeHtml } from './sanitizeHtml';
+import {
+  THEOREM_KINDS,
+  boxEnd,
+  hasBoxOpening,
+  normalizeNewlines,
+  scanBoxes,
+  type BoxName,
+  type BoxSpan,
+  type TheoremKind,
+} from './parser';
 
 const MATH_SLOT = '';
 const REF_SLOT = '';
@@ -122,7 +132,28 @@ export type ContentBlock =
   | { type: 'code'; text: string }
   | { type: 'hr' }
   | { type: 'formula'; formulaId: string }
-  | { type: 'image'; src: string; alt: string; caption?: string };
+  | { type: 'image'; src: string; alt: string; caption?: string }
+  | BoxBlock;
+
+/** A definition, theorem, proof, example, typical mistake or remark, drawn as a box. */
+export interface BoxBlock {
+  type: 'box';
+  box: BoxName;
+  /** Only on a theorem. Absent means a plain theorem. */
+  kind?: TheoremKind;
+  /** The number shown, such as "1.2". Never set on a proof. */
+  id?: string;
+  /** The name, such as "di Weierstrass": text with inline math only. */
+  title?: InlineSegment[];
+  blocks: ContentBlock[];
+  /** The `:::proof` that follows a theorem with only blank lines between. */
+  proof?: BoxProof;
+}
+
+export interface BoxProof {
+  title?: InlineSegment[];
+  blocks: ContentBlock[];
+}
 
 const md = new MarkdownIt('commonmark', { html: false, linkify: false, typographer: false });
 // Indented code and setext headings misfire on generated prose; fenced code and `---` rules stay.
@@ -360,8 +391,54 @@ function parseImageMarker(chunk: string): ContentBlock | null {
   }
 }
 
-/** Parse smartbook body into blocks; numbered formulas and images split the markdown flow */
+/**
+ * Parse smartbook body into blocks; numbered formulas and images split the markdown flow,
+ * and box blocks (`:::theorem` and the others) hold their own blocks.
+ */
 export function parseContentBlocks(content: string): ContentBlock[] {
+  if (!content) return [];
+  const text = normalizeNewlines(content);
+  const blanked = blankCode(text);
+  // Text without boxes takes the same path as before boxes existed.
+  if (!hasBoxOpening(blanked)) return parseFlowBlocks(content);
+
+  const lines = text.split('\n');
+  const slice = (from: number, to: number) => lines.slice(from, to).join('\n');
+  const blocks: ContentBlock[] = [];
+  let cursor = 0;
+  for (const span of scanBoxes(lines, blanked.split('\n'))) {
+    blocks.push(...parseFlowBlocks(slice(cursor, span.open)));
+    const kind = span.attrs.kind;
+    const { title, blocks: inner } = boxContent(span, lines);
+    blocks.push({
+      type: 'box',
+      box: span.name,
+      ...(span.name === 'theorem' && isTheoremKind(kind) ? { kind } : {}),
+      ...(span.name !== 'proof' && span.attrs.id ? { id: span.attrs.id } : {}),
+      ...(title ? { title } : {}),
+      blocks: inner,
+      ...(span.proof ? { proof: boxContent(span.proof, lines) } : {}),
+    });
+    cursor = boxEnd(span, lines.length);
+  }
+  blocks.push(...parseFlowBlocks(slice(cursor, lines.length)));
+  return blocks;
+}
+
+const isTheoremKind = (value: string | undefined): value is TheoremKind =>
+  (THEOREM_KINDS as readonly (string | undefined)[]).includes(value);
+
+/** Title and body of a box. An unclosed box takes every line to the end of `lines`. */
+function boxContent(span: BoxSpan, lines: string[]): BoxProof {
+  const body = lines.slice(span.open + 1, span.close === -1 ? lines.length : span.close).join('\n');
+  const title = span.attrs.title?.trim();
+  return {
+    ...(title ? { title: [{ type: 'text' as const, html: sanitizeHtml(renderLatexInText(title)) }] } : {}),
+    blocks: parseContentBlocks(body),
+  };
+}
+
+function parseFlowBlocks(content: string): ContentBlock[] {
   if (!content) return [];
 
   const blocks: ContentBlock[] = [];

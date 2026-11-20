@@ -23,7 +23,10 @@ export {
   processInlineRefs,
   processLinks,
   preprocessContent,
+  BOX_NAMES,
+  THEOREM_KINDS,
 } from './parser';
+export type { BoxName, TheoremKind } from './parser';
 
 export {
   renderLatexInText,
@@ -32,7 +35,7 @@ export {
   parseInlineSegments,
   parseContentBlocks,
 } from './renderContent';
-export type { InlineSegment, ContentBlock } from './renderContent';
+export type { InlineSegment, ContentBlock, BoxBlock, BoxProof } from './renderContent';
 
 export {
   extractDisplayTex,

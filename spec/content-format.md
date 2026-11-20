@@ -74,7 +74,7 @@ Vedi `politost-smartbook/src/content/esempio/` — libro dimostrativo integrato 
   "access": "public",
   "authors": ["Ada Rossi", "Luca Bianchi"],
   "version": "1.2.0",
-  "specVersion": "1.2",
+  "specVersion": "1.3",
   "sections": {
     "smartbook":  { "enabled": true, "label": "Capitoli" },
     "formulario": { "enabled": true, "label": "Formulario" },
@@ -112,10 +112,11 @@ Vedi `politost-smartbook/src/content/esempio/` — libro dimostrativo integrato 
 
 ### Versioni
 
-Questo documento descrive il formato **1.2** (file `VERSION`, costante `CONTENT_FORMAT_VERSION` in content-core).
+Questo documento descrive il formato **1.3** (file `VERSION`, costante `CONTENT_FORMAT_VERSION` in content-core).
 
 | Versione | Cambiamenti |
 |----------|-------------|
+| 1.3 | [Blocchi](#blocchi-definizioni-teoremi-esempi) `:::definition`, `:::theorem`, `:::proof`, `:::example`, `:::mistake`, `:::remark` nei capitoli. Un libro che li usa dichiara `"specVersion": "1.3"`. Un libro 1.2 resta valido senza modifiche |
 | 1.2 | Il testo dei capitoli è CommonMark (markdown-it): elenchi annidati, grassetto e corsivo negli elenchi, citazioni, blocchi di codice, linee orizzontali. Il markup lasciato dal generatore è un errore. `:::hint` mancante dà un avviso solo in `esercizi.md`. Un libro 1.1 resta valido se non contiene markup del generatore |
 | 1.1 | Campi opzionali `authors`, `version`, `specVersion` in `smartbook.json`. Un libro 1.0 resta valido senza modifiche |
 | 1.0 | Prima versione stabile |
@@ -249,6 +250,76 @@ Solo file in `assets/`. Niente URL esterni.
 
 Formati: `.png`, `.jpg`, `.jpeg`, `.webp`, `.svg`.
 
+### Blocchi: definizioni, teoremi, esempi
+
+Dal formato 1.3 definizioni, teoremi, dimostrazioni, esempi, errori tipici e osservazioni sono blocchi, e il lettore li disegna come riquadri. Numero e nome stanno negli attributi, non nel testo: il lettore compone l'etichetta ("Teorema 1.2 · di Weierstrass").
+
+```markdown
+:::theorem{id="1.2" title="di Weierstrass"}
+Sia $K \subset \mathbb{R}^n$ compatto e $f$ continua su $K$. Allora
+
+:::formula{id="1.7" label="Weierstrass"}
+$$\min_K f \le f(\mathbf{x}) \le \max_K f$$
+:::
+:::
+
+:::proof
+Per la {{formula:1.7}} …
+:::
+```
+
+| Blocco | Etichetta nel lettore |
+|--------|-----------------------|
+| `definition` | Definizione |
+| `theorem` | Teorema, oppure Proposizione, Corollario, Lemma con `kind` |
+| `proof` | Dimostrazione |
+| `example` | Esempio |
+| `mistake` | Errore tipico |
+| `remark` | Osservazione |
+
+#### Righe di apertura e chiusura
+
+- L'apertura è `:::nome` oppure `:::nome{attributi}`, da sola sulla riga e a inizio riga. Una riga come `:::theorem{id="1.2"} Sia…`, con testo dopo la graffa, non apre un blocco e resta testo; il validatore la segnala.
+- La chiusura è `:::` da solo sulla riga.
+- Dentro un blocco `:::formula` e `:::image` si scrivono come fuori. Le loro righe `:::` chiudono loro, non il blocco che le contiene.
+- Un `:::` a metà riga, o dentro un blocco di codice, è testo.
+- Fine riga LF o CRLF, come nel resto del capitolo.
+
+#### Attributi
+
+Tutti facoltativi, in qualsiasi ordine, nella forma `nome="valore"` separati da spazi.
+
+| Attributo | Valore |
+|-----------|--------|
+| `id` | Il numero mostrato: cifre separate da punti, come `1.2` o `3.10.1`. Su `:::proof` è ignorato, con un avviso |
+| `title` | Il nome, come `di Weierstrass` o `palla`. Testo semplice e formule inline `$…$`, nient'altro di Markdown. Può contenere `}` e `\`, non `"` |
+| `kind` | Solo su `:::theorem`: `proposition`, `corollary` o `lemma`. Senza `kind` è un teorema. Un altro valore, o `kind` su un altro blocco, è un errore |
+
+Un attributo sconosciuto dà un avviso e il parser lo ignora.
+
+I numeri vanno per nome di blocco: Definizione 1.2, Teorema 1.2 e la formula (1.2) possono esistere insieme. Un `id` è univoco fra i blocchi con lo stesso nome nel libro. Proposizioni, corollari e lemmi sono `:::theorem` e condividono la numerazione dei teoremi.
+
+#### Corpo
+
+- Il corpo contiene paragrafi, elenchi, citazioni, formule display, `{{formula:…}}`, link `ref:`, `:::formula` e `:::image`. Non può essere vuoto.
+- Una `:::formula` dentro un blocco è una formula numerata del capitolo come le altre: compare nel formulario e nei riferimenti.
+- Il corpo non ripete numero e nome. Se comincia con un'etichetta in grassetto come `**Teorema`, `**Definizione`, `**Dimostrazione`, `**Esempio`, `**Errore tipico`, `**Osservazione`, `**Proposizione`, `**Corollario` o `**Lemma`, il validatore dà un avviso.
+- Il testo subito dopo la riga `:::` di chiusura, anche senza riga vuota, è fuori dal blocco.
+
+#### Dimostrazioni
+
+Un `:::proof` la cui riga di apertura segue il `:::` di chiusura di un `:::theorem`, con in mezzo solo righe vuote, appartiene a quel teorema. Ogni altro `:::proof` sta da solo. `:::proof` accetta `title` (per esempio `title="per induzione"`).
+
+#### Dove si possono usare
+
+Solo nel testo dei paragrafi dei capitoli. Nessuno dei sei blocchi può contenerne un altro, né `:::exercise`, `:::hint` o `:::solution`. Un blocco dentro un esercizio, un suggerimento, una soluzione o una prova d'esame è un errore. In tutti questi casi il parser non perde testo: un blocco dentro un blocco diventa un blocco annidato, un esercizio dentro un blocco resta testo.
+
+Un blocco senza `:::` di chiusura è un errore che indica la riga di apertura. Il parser gli dà il resto del paragrafo, fino al prossimo `## pN |`, mai il resto del capitolo. Anche un blocco chiuso non può attraversare un `## pN |`: l'intestazione chiude il paragrafo e il blocco resta aperto.
+
+#### Lettori più vecchi
+
+Un lettore che conosce solo il formato 1.2 mostra l'avviso sulla versione più nuova (vedi [Versioni](#versioni)) e apre il libro. Le righe `:::theorem{…}`, `:::proof` e `:::` compaiono come testo nel paragrafo, il testo dei blocchi resta tutto e le formule numerate al loro interno restano nel formulario.
+
 ---
 
 ## 5. Esercizi ed esami
@@ -362,11 +433,12 @@ npm run validate:chapter -- \
 Il validatore è `validateChapter` / `validateBundle` in content-core (`packages/content-core/src/validateChapter.ts`). Tra gli errori:
 
 - paragrafi senza `## pN |`, formule con `id` incoerente, blocchi `:::` non chiusi;
+- blocchi come `:::theorem` con apertura o attributi non validi, `id` malformato o ripetuto fra blocchi con lo stesso nome, `kind` sbagliato, corpo vuoto, annidati fra loro o con `:::exercise`, `:::hint`, `:::solution`, oppure dentro `esercizi.md` o `esami.md`;
 - immagini senza `alt`, fuori da `assets/` o mancanti nel pacchetto;
 - capitoli elencati in `smartbook.json` ma assenti, `id` non valido, metadati 1.1 con forma sbagliata;
 - **markup del generatore** in un capitolo, in `esercizi.md` o in `esami.md`: tag rimasti dall'output di un modello, come `</markdown>`, `</invoke>`, `<parameter name="…">`, `<function_calls>`, `antml:*`, `tool_use`, `tool_result`. È un errore in tutti i profili (`dev` e `ship`). Chi produce i file deve toglierli prima di esportare.
 
-Danno un avviso, in entrambi i profili: testo prima del primo `## pN |` (il parser lo mette in p1), link `ref:chapter/N#pM` verso un paragrafo che non esiste, `sections` incompleto, capitoli senza `id` o con `id` che non è uno slug, grafici senza la `config` descritta in [Grafici](#7-grafici-graficijson), e negli esercizi `chapter` sconosciuto, riferimenti senza destinazione e LaTeX non valido. Codice inline e blocchi di codice sono esclusi dai controlli su `**` e LaTeX.
+Danno un avviso, in entrambi i profili: testo prima del primo `## pN |` (il parser lo mette in p1), nei blocchi un attributo sconosciuto, un `id` su `:::proof` o un corpo che comincia con l'etichetta in grassetto, un libro con blocchi che dichiara una `specVersion` precedente alla 1.3 o nessuna, link `ref:chapter/N#pM` verso un paragrafo che non esiste, `sections` incompleto, capitoli senza `id` o con `id` che non è uno slug, grafici senza la `config` descritta in [Grafici](#7-grafici-graficijson), e negli esercizi `chapter` sconosciuto, riferimenti senza destinazione e LaTeX non valido. Codice inline e blocchi di codice sono esclusi dai controlli su `**` e LaTeX.
 
 Il profilo `dev` riporta come avvisi molti controlli che `ship` tratta come errori. Il markup del generatore è un errore in entrambi. L'elenco completo è nei test di content-core.
 
@@ -377,6 +449,7 @@ Il profilo `dev` riporta come avvisi molti controlli che `ship` tratta come erro
 ## 10. Convenzioni
 
 - Formule: `id="capitolo.progressivo"` allineato a `chapters[].number`
+- Blocchi: `id` con il numero che il libro mostra, numerato per nome di blocco
 - Paragrafi: `p1`, `p2`, … senza salti logici
 - Esercizi: `E<cap>.<n>`; esami: `X<anno>-<n>`
 - Delimitatori `:::` su righe dedicate

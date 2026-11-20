@@ -22,8 +22,9 @@ const IMAGE_BLOCK = new RegExp(
 );
 const IMAGE_MARKER = new RegExp(`<!--IMAGE:(\\{${IMAGE_QUOTED_BRACE}\\})-->`, 'g');
 const EXERCISE_OPEN = /:::exercise\{([^}]+)\}\n/g;
-/** `:::hint`, `:::solution`, `:::exercise`, or any `:::name{...}` such as `:::image{...}`. */
-const BLOCK_OPEN_LINE = /^:::(?:(?:exercise|hint|solution)(?=[{\s]|$)|[a-z][\w-]*\{)/;
+/** `:::hint`, `:::solution`, `:::exercise`, a box such as `:::proof`, or any `:::name{...}` such as `:::image{...}`. */
+const BLOCK_OPEN_LINE =
+  /^:::(?:(?:exercise|hint|solution|definition|theorem|proof|example|mistake|remark)(?=[{\s]|$)|[a-z][\w-]*\{)/;
 /** `:::image{...} :::` on one line opens and closes itself. */
 const SELF_CLOSED_LINE = /\}[ \t]*:::[ \t]*$/;
 const PARA_HEADER = /^## (p\d+) \| (.+)$/gm;
@@ -266,4 +267,104 @@ export function processLinks(content: string): string {
 
 export function preprocessContent(content: string): string {
   return processLinks(processInlineRefs(processImageBlocks(content)));
+}
+
+/** Box blocks of chapter text (content format 1.3). The reader draws each one as a box. */
+export const BOX_NAMES = ['definition', 'theorem', 'proof', 'example', 'mistake', 'remark'] as const;
+export type BoxName = (typeof BOX_NAMES)[number];
+/** Values of `kind` on a `:::theorem`. Without `kind` it is a plain theorem. */
+export const THEOREM_KINDS = ['proposition', 'corollary', 'lemma'] as const;
+export type TheoremKind = (typeof THEOREM_KINDS)[number];
+
+const BOX_NAME_GROUP = BOX_NAMES.join('|');
+/** `:::name` or `:::name{attrs}`, alone on its line. The attributes run to the last `}`, so a title may hold `}`. */
+const BOX_OPEN = new RegExp(`^:::(${BOX_NAME_GROUP})(?:\\{(.*)\\})?[ \\t]*$`);
+/** Lines that start like a box opening, valid or not. The validator reports the invalid ones. */
+export const BOX_OPEN_LIKE = new RegExp(`^:::(?:${BOX_NAME_GROUP})(?![\\w-])`);
+const BOX_CLOSE = /^:::[ \t]*$/;
+const BOX_ATTRS = /^(?:[ \t]*[A-Za-z][\w-]*="[^"\n]*")*[ \t]*$/;
+const BOX_ATTR = /([A-Za-z][\w-]*)="([^"\n]*)"/g;
+
+export interface BoxOpening {
+  name: BoxName;
+  /** Each `name="value"` pair. When a name repeats, the first value wins. */
+  attrs: Record<string, string>;
+  /** False when the text inside `{…}` is not a list of `name="value"` pairs. */
+  attrsValid: boolean;
+}
+
+export function readBoxOpening(line: string): BoxOpening | null {
+  const m = BOX_OPEN.exec(line);
+  if (!m) return null;
+  const raw = m[2] ?? '';
+  const attrs: Record<string, string> = {};
+  for (const [, key, value] of raw.matchAll(BOX_ATTR)) {
+    if (!(key in attrs)) attrs[key] = value;
+  }
+  return { name: m[1] as BoxName, attrs, attrsValid: BOX_ATTRS.test(raw) };
+}
+
+export interface BoxSpan extends BoxOpening {
+  /** Line index of the opening line. */
+  open: number;
+  /** Line index of the closing `:::`, or -1 when the block is not closed and runs to the last line. */
+  close: number;
+  /** The `:::proof` attached to a theorem. */
+  proof?: BoxSpan;
+}
+
+/** Line after the box, or after its attached proof. */
+export function boxEnd(span: BoxSpan, lineCount: number): number {
+  const last = span.proof ?? span;
+  return last.close === -1 ? lineCount : last.close + 1;
+}
+
+/** A line that opens a block inside a box: another box, or a fence such as a non-canonical `:::formula{…}`. */
+function opensNested(line: string): boolean {
+  return BOX_OPEN.test(line) || (opensFence(line) && !BOX_OPEN_LIKE.test(line));
+}
+
+function findBoxClose(lines: string[], from: number): number {
+  let depth = 1;
+  for (let i = from; i < lines.length; i++) {
+    if (opensNested(lines[i])) depth++;
+    else if (BOX_CLOSE.test(lines[i]) && --depth === 0) return i;
+  }
+  return -1;
+}
+
+/**
+ * The top-level boxes in `lines`. `blanked` is the same text with code replaced by spaces
+ * (blankCode in renderContent), so a `:::` inside a code block is not read as a fence.
+ */
+export function scanBoxes(lines: string[], blanked: string[] = lines): BoxSpan[] {
+  const spans: BoxSpan[] = [];
+  const spanAt = (i: number): BoxSpan | null => {
+    const opening = BOX_OPEN.test(blanked[i]) ? readBoxOpening(lines[i]) : null;
+    return opening && { ...opening, open: i, close: findBoxClose(blanked, i + 1) };
+  };
+
+  let i = 0;
+  while (i < lines.length) {
+    const span = spanAt(i);
+    if (!span) {
+      i++;
+      continue;
+    }
+    if (span.name === 'theorem' && span.close !== -1) {
+      let j = span.close + 1;
+      // Blank in the source: a code block, blanked for fence matching, is not a blank line.
+      while (j < lines.length && !lines[j].trim()) j++;
+      const proof = j < lines.length ? spanAt(j) : null;
+      if (proof?.name === 'proof') span.proof = proof;
+    }
+    spans.push(span);
+    i = boxEnd(span, lines.length);
+  }
+  return spans;
+}
+
+/** True when the text has a box opening line, ignoring code. Pass text with code blanked. */
+export function hasBoxOpening(blankedText: string): boolean {
+  return blankedText.split('\n').some((line) => BOX_OPEN.test(line));
 }

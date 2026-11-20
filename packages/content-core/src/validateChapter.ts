@@ -3,8 +3,14 @@ import { isValidAssetPath, validateAssetSizes } from './assetResolver';
 import type { FormulaRef, IdeSnippet } from './types/smartbook';
 import { validateExercises } from './validateExercises';
 import {
+  BOX_OPEN_LIKE,
   CANONICAL_FORMULA_OPEN,
   IMAGE_QUOTED_BRACE,
+  THEOREM_KINDS,
+  readBoxOpening,
+  scanBoxes,
+  type BoxName,
+  type BoxSpan,
   buildFormulaIndex,
   extractImageRefs,
   hasExternalImageMarkdown,
@@ -13,7 +19,7 @@ import {
   parseExercises,
 } from './parser';
 import { blankCode } from './renderContent';
-import { validateBookMeta, type BookMeta } from './bookMeta';
+import { compareSpecVersions, validateBookMeta, type BookMeta } from './bookMeta';
 
 const IMAGE_BLOCK = new RegExp(`:::image\\{(${IMAGE_QUOTED_BRACE})\\}`, 'g');
 const REF_LINK = /\[([^\]]+)\]\(ref:(formula\/[\d.]+|chapter\/(\d+)#(p\d+))\)/g;
@@ -170,6 +176,101 @@ function validateLatex(latex: string, context: string, findings: string[]): void
   }
 }
 
+const PARA_LINE = /^## p\d+ \| .+$/;
+const BOX_ID = /^\d+(?:\.\d+)*$/;
+const BOX_ATTR_NAMES = new Set(['id', 'title', 'kind']);
+/** A bold label the conversion should have moved into the attributes. */
+const LEFTOVER_LABEL =
+  /^\*\*(?:Definizione|Teorema|Dimostrazione|Esempio|Errore tipico|Osservazione|Proposizione|Corollario|Lemma)\b/;
+const EXERCISE_FENCE = /^:::(exercise|hint|solution)(?=[{\s]|$)/;
+/** First content-format version with box blocks. */
+const BOX_SPEC_VERSION = '1.3';
+
+export interface ChapterBox {
+  name: BoxName;
+  /** Set when the id is valid. A proof never has one. */
+  id?: string;
+  /** Line of the opening `:::name`, counted from the top of the file. */
+  line: number;
+}
+
+/**
+ * Box blocks (`:::theorem` and the others) of a chapter, one paragraph at a time, as the parser reads them.
+ * Line numbers count from the top of the file, frontmatter included. Returns every box found, attached proofs included.
+ */
+function validateBoxes(raw: string, errors: string[], warnings: string[]): ChapterBox[] {
+  const lines = raw.split('\n');
+  const blanked = blankCode(raw).split('\n');
+  const found: ChapterBox[] = [];
+  const seen = new Map<string, number>();
+
+  for (const [i, line] of blanked.entries()) {
+    if (BOX_OPEN_LIKE.test(line) && !readBoxOpening(line)) {
+      errors.push(`Riga ${i + 1}: apertura "${line.trim().slice(0, 60)}" non valida: scrivi :::nome o :::nome{…} da solo sulla riga`);
+    }
+  }
+
+  const check = (span: BoxSpan, offset: number, sectionEnd: number) => {
+    const at = `Riga ${offset + span.open + 1}: :::${span.name}`;
+    if (!span.attrsValid) errors.push(`${at}: attributi non validi, scrivi nome="valore" separati da spazi`);
+    for (const key of Object.keys(span.attrs)) {
+      if (!BOX_ATTR_NAMES.has(key)) warnings.push(`${at}: attributo ${key} sconosciuto, ignorato`);
+    }
+    const kind = span.attrs.kind;
+    if (kind !== undefined && span.name !== 'theorem') {
+      errors.push(`${at}: kind vale solo su :::theorem`);
+    } else if (kind !== undefined && !(THEOREM_KINDS as readonly string[]).includes(kind)) {
+      errors.push(`${at}: kind="${kind}" non valido, atteso proposition, corollary o lemma`);
+    }
+
+    const id = span.attrs.id;
+    const line = offset + span.open + 1;
+    if (id !== undefined && span.name === 'proof') {
+      warnings.push(`${at}: una dimostrazione non ha numero, id ignorato`);
+    } else if (id !== undefined && !BOX_ID.test(id)) {
+      errors.push(`${at}: id="${id}" non valido, atteso un numero come 1.2`);
+    } else if (id !== undefined) {
+      const key = `${span.name} ${id}`;
+      const first = seen.get(key);
+      if (first !== undefined) errors.push(`${at}: id ${id} già usato alla riga ${first} da un altro :::${span.name}`);
+      else seen.set(key, line);
+    }
+    const validId = id !== undefined && span.name !== 'proof' && BOX_ID.test(id);
+    found.push({ name: span.name, ...(validId ? { id } : {}), line });
+
+    const from = offset + span.open + 1;
+    const to = span.close === -1 ? sectionEnd : offset + span.close;
+    if (span.close === -1) {
+      errors.push(`${at} non chiuso: manca la riga ::: prima del paragrafo successivo`);
+    }
+    const body = blanked.slice(from, to);
+    const first = body.find((line) => line.trim());
+    // A body of code only is blank once blanked, so emptiness is read from the source lines.
+    if (!lines.slice(from, to).some((line) => line.trim())) errors.push(`${at}: corpo vuoto`);
+    else if (first !== undefined && LEFTOVER_LABEL.test(first.trim())) {
+      warnings.push(`${at}: il corpo comincia con l'etichetta in grassetto, ma numero e nome vanno negli attributi`);
+    }
+    for (const nested of scanBoxes(lines.slice(from, to), body)) {
+      errors.push(`Riga ${from + nested.open + 1}: :::${nested.name} dentro :::${span.name}, i blocchi non si annidano`);
+    }
+    for (const [i, line] of body.entries()) {
+      const fence = EXERCISE_FENCE.exec(line);
+      if (fence) errors.push(`Riga ${from + i + 1}: :::${fence[1]} non ammesso dentro :::${span.name}`);
+    }
+  };
+
+  // Paragraph headers end every box, as in parseChapterMarkdown.
+  const starts = [0, ...lines.flatMap((line, i) => (PARA_LINE.test(line) ? [i + 1] : []))];
+  for (const [k, start] of starts.entries()) {
+    const end = k + 1 < starts.length ? starts[k + 1] - 1 : lines.length;
+    for (const span of scanBoxes(lines.slice(start, end), blanked.slice(start, end))) {
+      check(span, start, end);
+      if (span.proof) check(span.proof, start, end);
+    }
+  }
+  return found;
+}
+
 export interface ChapterValidationResult {
   valid: boolean;
   chapterNumber: number;
@@ -179,6 +280,8 @@ export interface ChapterValidationResult {
   warnings: string[];
   paragraphs: { id: string; title: string }[];
   formulas: { id: string; label: string }[];
+  /** Box blocks, for checks across chapters. */
+  boxes: ChapterBox[];
 }
 
 export function validateChapter(
@@ -214,6 +317,7 @@ export function validateChapter(
   validateImagesInContent(raw, 'Capitolo', errors, warnings, strict, availableAssets);
   validateContentQuality(blankCode(raw), errors, warnings, strict);
   validateNoToolMarkup(raw, 'Capitolo', errors);
+  const boxes = validateBoxes(raw, errors, warnings);
 
   const formulaOpenRe = new RegExp(CANONICAL_FORMULA_OPEN.source, 'gm');
   const openCount = [...raw.matchAll(formulaOpenRe)].length;
@@ -297,6 +401,7 @@ export function validateChapter(
     warnings,
     paragraphs: parsed.paragraphs.map((p) => ({ id: p.id, title: p.title })),
     formulas: parsed.formulas.map((f) => ({ id: f.id, label: f.label })),
+    boxes,
   };
 }
 
@@ -423,6 +528,9 @@ export function validateBundle(
   const bookFormulaIndex = buildFormulaIndex(parsedChapters);
   const bookParagraphs = new Map(parsedChapters.map((c) => [c.meta.number, new Set(c.paragraphs.map((p) => p.id))]));
 
+  // Box ids are unique per block name in the whole book: Teorema 1.2 and Definizione 1.2 can both exist.
+  const boxFiles = new Map<string, string>();
+  let usesBoxes = false;
   for (const ch of chapters) {
     if (!ch || typeof ch !== 'object') continue;
     const raw = chapterFiles[ch.file];
@@ -438,6 +546,22 @@ export function validateBundle(
     });
     errors.push(...result.errors.map((e) => `${ch.file}: ${e}`));
     warnings.push(...result.warnings.map((w) => `${ch.file}: ${w}`));
+    if (result.boxes.length) usesBoxes = true;
+    for (const box of result.boxes) {
+      if (box.id === undefined) continue;
+      const key = `${box.name} ${box.id}`;
+      const other = boxFiles.get(key);
+      if (other === undefined) boxFiles.set(key, ch.file);
+      else if (other !== ch.file) {
+        errors.push(`${ch.file}: Riga ${box.line}: :::${box.name} id ${box.id} già usato in ${other}`);
+      }
+    }
+  }
+  const spec = typeof config.specVersion === 'string' ? config.specVersion : '1.0';
+  if (usesBoxes && /^\d+\.\d+$/.test(spec) && compareSpecVersions(spec, BOX_SPEC_VERSION) < 0) {
+    warnings.push(
+      `smartbook.json: i capitoli usano blocchi come :::theorem, che chiedono specVersion "${BOX_SPEC_VERSION}" o successiva`,
+    );
   }
 
   if (extras.eserciziRaw) {
