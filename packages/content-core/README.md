@@ -44,7 +44,7 @@ npm ci && npm test && npm run typecheck
 | `strict`  | not set                                                          | `true` is the same as `profile: 'ship'`. On bundles and packages, `false` is the same as `profile: 'dev'`.                                                          |
 | `latex`   | `true`                                                           | `false` skips the KaTeX check of formulas and keeps every other check.                                                                                              |
 
-The formula check is most of the cost of validating a book. Pass `latex: false` only when the caller has checked the package bytes against a hash published by a pipeline that ran the full validation, such as a catalog book whose SHA-256 matches the catalog. A book from anywhere else, such as a file the reader opens from disk, needs the full check.
+The formula check is most of the cost of validating a book, because it renders every distinct formula with KaTeX: some formulas, such as `\genfrac{(}{!}{}{}{a}{b}`, parse cleanly and fail only while KaTeX builds the output. Pass `latex: false` only when the caller has checked the package bytes against a hash published by a pipeline that ran the full validation, such as a catalog book whose SHA-256 matches the catalog. A book from anywhere else, such as a file the reader opens from disk, needs the full check.
 
 ```ts
 const book = readPtsb(bytes, undefined, { latex: false }); // only after the hash check
@@ -52,8 +52,8 @@ const book = readPtsb(bytes, undefined, { latex: false }); // only after the has
 
 ## Changes in 0.7.1
 
-- Validation is four to five times faster: Fisica 1 takes 125 ms instead of 560 ms, Analisi Matematica 2 110 ms instead of 590 ms (Node 24, median of 5). Formulas are checked with KaTeX's parser instead of being rendered, and each formula once per book. A few formulas, such as a `\text{…}` with `°` or `·`, can fail only while KaTeX builds the output, so those are still rendered. Errors and warnings are identical to 0.7.0 on the five books in politost-books and on 90 broken formulas.
-- New option `latex: false` skips the formula check, for packages verified against a published hash. `validateBundle` and `validateChapter` take it in their options, and `readPtsb(bytes, limits, options)` and `parsePtsbEntries(entries, options)` now take the bundle options and pass them to `validateBundle`. See [Validation options](#validation-options). With it, the two books above validate in 21 ms and 13 ms.
+- The full check is about 20% faster: Fisica 1 takes 460 ms instead of 570 ms, Analisi Matematica 2 455 ms instead of 570 ms (Node 24, median of 5). It still renders every formula with KaTeX, as 0.7.0 did, but each distinct formula once per book, and each chapter is parsed and code-blanked once. Errors and warnings are identical to 0.7.0 on the five books in politost-books and on 90 broken formulas.
+- New option `latex: false` skips the formula check, for packages verified against a published hash. `validateBundle` and `validateChapter` take it in their options, and `readPtsb(bytes, limits, options)` and `parsePtsbEntries(entries, options)` now take the bundle options and pass them to `validateBundle`. See [Validation options](#validation-options). It is the only fast path: with it, the two books above validate in 21 ms and 13 ms.
 
 ## Changes in 0.7.0
 

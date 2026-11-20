@@ -163,58 +163,6 @@ function validateContentQuality(
   }
 }
 
-type KatexCheckOptions = { displayMode: boolean; throwOnError: true };
-export type KatexParse = (tex: string, options: KatexCheckOptions) => unknown;
-
-/**
- * KaTeX's parser, which `renderToString` runs before building the HTML and MathML.
- * KaTeX exports it only as `__parse`, an internal entry, and no public function parses without building.
- * Parsing alone takes about a quarter of the time of rendering. If a KaTeX update removes it,
- * checkTex renders every formula, and the test "KaTeX still exports __parse" fails.
- */
-export const katexParse = (katex as unknown as { __parse?: KatexParse }).__parse;
-
-/** ASCII and Latin letters with diacritics. */
-const PLAIN_TEXT = /^[\x00-\x7fÀ-ɏ]*$/;
-const ASTRAL = /[\ud800-\udfff]/;
-
-/**
- * True when the tree parses but building it can still throw. In KaTeX 0.19.1 three cases do, found by reading
- * the builders and by comparing __parse with renderToString on 436,000 generated formulas:
- * - an infix command (`\over`, `\choose`) left where the parser cannot rewrite it, as in `\over_1`;
- * - a character outside the Basic Multilingual Plane, such as `𝚤`, which the builder may not support;
- * - a text-mode symbol with no metrics in the current font, such as `\yen` in `\textbf`. The check takes
- *   every text-mode command and every character that is not ASCII or a Latin letter.
- */
-function buildMayFail(node: unknown): boolean {
-  if (Array.isArray(node)) return node.some(buildMayFail);
-  if (!node || typeof node !== 'object') return false;
-  const n = node as { type?: unknown; mode?: unknown; text?: unknown };
-  if (n.type === 'infix') return true;
-  if (typeof n.text === 'string') {
-    if (ASTRAL.test(n.text)) return true;
-    if (n.mode === 'text' && (n.text.startsWith('\\') || !PLAIN_TEXT.test(n.text))) return true;
-  }
-  const fields = node as Record<string, unknown>;
-  for (const key in fields) {
-    // `loc` points back to the lexer and the whole source.
-    if (key === 'loc') continue;
-    const value = fields[key];
-    if (value !== null && typeof value === 'object' && buildMayFail(value)) return true;
-  }
-  return false;
-}
-
-/**
- * Throws what `katex.renderToString` with `throwOnError` would throw, and nothing otherwise.
- * It renders only when parsing is unavailable or the tree is one that buildMayFail flags.
- */
-export function checkTex(tex: string, displayMode: boolean, parse: KatexParse | null | undefined = katexParse): void {
-  const options: KatexCheckOptions = { displayMode, throwOnError: true };
-  if (parse && !buildMayFail(parse(tex, options))) return;
-  katex.renderToString(tex, options);
-}
-
 /**
  * KaTeX's error message for each formula already checked, or null when it is valid. Keys start with D for display
  * and I for inline. A book checks many formulas more than once: every numbered formula with its paragraph and
@@ -227,7 +175,7 @@ function texError(tex: string, displayMode: boolean, cache: LatexCache): string 
   let error = cache.get(key);
   if (error === undefined) {
     try {
-      checkTex(tex, displayMode);
+      katex.renderToString(tex, { displayMode, throwOnError: true });
       error = null;
     } catch (e) {
       error = (e as Error).message;
