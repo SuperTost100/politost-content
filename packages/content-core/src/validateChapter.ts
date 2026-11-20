@@ -45,11 +45,18 @@ export interface ValidateChapterOptions {
   bookFormulaIndex?: Map<string, FormulaRef>;
   /** Paragraph ids by chapter number, to check ref:chapter/N#pM links to other chapters. */
   bookParagraphs?: Map<number, Set<string>>;
+  /** false skips the KaTeX check of formulas. See BundleValidateOptions.latex. */
+  latex?: boolean;
 }
 
 export interface BundleValidateOptions {
   profile?: ValidateProfile;
   strict?: boolean;
+  /**
+   * false skips the KaTeX check of formulas and keeps every other check. Default true.
+   * Pass false only for a package whose bytes match a hash published by a pipeline that ran the full validation.
+   */
+  latex?: boolean;
 }
 
 function shipMode(options?: ValidateChapterOptions | BundleValidateOptions): boolean {
@@ -155,6 +162,55 @@ function validateContentQuality(
   }
 }
 
+type KatexCheckOptions = { displayMode: boolean; throwOnError: true };
+export type KatexParse = (tex: string, options: KatexCheckOptions) => unknown;
+
+/**
+ * KaTeX's parser, which `renderToString` runs before building the HTML and MathML.
+ * KaTeX exports it only as `__parse`, an internal entry, and no public function parses without building.
+ * Parsing alone takes about a quarter of the time of rendering. If a KaTeX update removes it,
+ * checkTex renders every formula, and the test "KaTeX still exports __parse" fails.
+ */
+export const katexParse = (katex as unknown as { __parse?: KatexParse }).__parse;
+
+/** ASCII and Latin letters with diacritics. */
+const PLAIN_TEXT = /^[\x00-\x7fÀ-ɏ]*$/;
+const ASTRAL = /[\ud800-\udfff]/;
+
+/**
+ * True when the tree parses but building it can still throw. In KaTeX 0.19.1 three cases do, found by reading
+ * the builders and by comparing __parse with renderToString on 436,000 generated formulas:
+ * - an infix command (`\over`, `\choose`) left where the parser cannot rewrite it, as in `\over_1`;
+ * - a character outside the Basic Multilingual Plane, such as `𝚤`, which the builder may not support;
+ * - a text-mode symbol with no metrics in the current font, such as `\yen` in `\textbf`. The check takes
+ *   every text-mode command and every character that is not ASCII or a Latin letter.
+ */
+function buildMayFail(node: unknown): boolean {
+  if (Array.isArray(node)) return node.some(buildMayFail);
+  if (!node || typeof node !== 'object') return false;
+  const n = node as { type?: unknown; mode?: unknown; text?: unknown };
+  if (n.type === 'infix') return true;
+  if (typeof n.text === 'string') {
+    if (ASTRAL.test(n.text)) return true;
+    if (n.mode === 'text' && (n.text.startsWith('\\') || !PLAIN_TEXT.test(n.text))) return true;
+  }
+  for (const [key, value] of Object.entries(node)) {
+    // `loc` points back to the lexer and the whole source.
+    if (key !== 'loc' && buildMayFail(value)) return true;
+  }
+  return false;
+}
+
+/**
+ * Throws what `katex.renderToString` with `throwOnError` would throw, and nothing otherwise.
+ * It renders only when parsing is unavailable or the tree is one that buildMayFail flags.
+ */
+export function checkTex(tex: string, displayMode: boolean, parse: KatexParse | null | undefined = katexParse): void {
+  const options: KatexCheckOptions = { displayMode, throwOnError: true };
+  if (parse && !buildMayFail(parse(tex, options))) return;
+  katex.renderToString(tex, options);
+}
+
 /** `findings` is the errors list, or the warnings list where invalid LaTeX must not block a book. */
 function validateLatex(latex: string, context: string, findings: string[]): void {
   const blocks = [...latex.matchAll(/\$\$([\s\S]*?)\$\$/g)].map((m) => m[1].trim());
@@ -162,14 +218,14 @@ function validateLatex(latex: string, context: string, findings: string[]): void
 
   for (const block of blocks) {
     try {
-      katex.renderToString(block, { throwOnError: true, displayMode: true });
+      checkTex(block, true);
     } catch (e) {
       findings.push(`${context}: LaTeX display invalido — ${(e as Error).message}`);
     }
   }
   for (const inline of inlines) {
     try {
-      katex.renderToString(inline, { throwOnError: true, displayMode: false });
+      checkTex(inline, false);
     } catch (e) {
       findings.push(`${context}: LaTeX inline invalido — ${(e as Error).message}`);
     }
@@ -293,6 +349,7 @@ export function validateChapter(
   const warnings: string[] = [];
   const strict = shipMode(options);
   const availableAssets = options?.availableAssets;
+  const latex = options?.latex !== false;
   raw = normalizeNewlines(raw);
 
   const parsed = parseChapterMarkdown(raw, chapterNumber);
@@ -311,7 +368,7 @@ export function validateChapter(
     if (!/^p\d+$/.test(p.id)) {
       errors.push(`ID paragrafo non valido: ${p.id}`);
     }
-    validateLatex(blankCode(p.content), `Paragrafo ${p.id}`, errors);
+    if (latex) validateLatex(blankCode(p.content), `Paragrafo ${p.id}`, errors);
   }
 
   validateImagesInContent(raw, 'Capitolo', errors, warnings, strict, availableAssets);
@@ -352,7 +409,7 @@ export function validateChapter(
     if (ch !== chapterNumber) {
       errors.push(`Formula ${f.id} appartiene al capitolo ${ch}, atteso ${chapterNumber}`);
     }
-    validateLatex(f.latex, `Formula ${f.id}`, errors);
+    if (latex) validateLatex(f.latex, `Formula ${f.id}`, errors);
   }
 
   const knownFormula = (id: string) => formulaIds.has(id) || options?.bookFormulaIndex?.has(id) === true;
@@ -455,13 +512,14 @@ function validateConfigShape(
   }
 }
 
-/** Refs, chapter numbers and LaTeX in esercizi.md / esami.md. Warnings only, so existing books still open. */
+/** Refs, chapter numbers and, unless `latex` is false, LaTeX in esercizi.md / esami.md. Warnings only, so existing books still open. */
 function validateExerciseRefs(
   raw: string,
   name: string,
   bookParagraphs: Map<number, Set<string>>,
   bookFormulaIndex: Map<string, FormulaRef>,
   warnings: string[],
+  latex: boolean,
 ): void {
   for (const ex of parseExercises(raw)) {
     const context = `${name}: ${ex.id || 'exercise'}`;
@@ -478,7 +536,7 @@ function validateExerciseRefs(
         : bookParagraphs.get(Number(m[3]))?.has(m[4]) === true;
       if (!found) warnings.push(`${context}: link ref:${m[2]} senza destinazione`);
     }
-    validateLatex(text, context, warnings);
+    if (latex) validateLatex(text, context, warnings);
   }
 }
 
@@ -503,6 +561,7 @@ export function validateBundle(
   const errors: string[] = [];
   const warnings: string[] = [];
   const strict = bundleShipMode(options);
+  const latex = options?.latex !== false;
   const availableAssets = new Set(Object.keys(assets));
 
   errors.push(...validateAssetSizes(assets));
@@ -543,6 +602,7 @@ export function validateBundle(
       availableAssets,
       bookFormulaIndex,
       bookParagraphs,
+      latex,
     });
     errors.push(...result.errors.map((e) => `${ch.file}: ${e}`));
     warnings.push(...result.warnings.map((w) => `${ch.file}: ${w}`));
@@ -570,7 +630,7 @@ export function validateBundle(
     const ex = validateExercises(extras.eserciziRaw, 'esercizi');
     errors.push(...ex.errors.map((e) => `esercizi.md: ${e}`));
     warnings.push(...ex.warnings.map((w) => `esercizi.md: ${w}`));
-    validateExerciseRefs(extras.eserciziRaw, 'esercizi.md', bookParagraphs, bookFormulaIndex, warnings);
+    validateExerciseRefs(extras.eserciziRaw, 'esercizi.md', bookParagraphs, bookFormulaIndex, warnings, latex);
   }
   if (extras.esamiRaw) {
     validateImagesInContent(extras.esamiRaw, 'esami.md', errors, warnings, strict, availableAssets);
@@ -578,7 +638,7 @@ export function validateBundle(
     const ex = validateExercises(extras.esamiRaw, 'esami');
     errors.push(...ex.errors.map((e) => `esami.md: ${e}`));
     warnings.push(...ex.warnings.map((w) => `esami.md: ${w}`));
-    validateExerciseRefs(extras.esamiRaw, 'esami.md', bookParagraphs, bookFormulaIndex, warnings);
+    validateExerciseRefs(extras.esamiRaw, 'esami.md', bookParagraphs, bookFormulaIndex, warnings, latex);
   }
   if (extras.graficiRaw) validateGraficiRaw(extras.graficiRaw, errors, warnings);
   if (extras.ideRaw) validateIdeRaw(extras.ideRaw, errors);

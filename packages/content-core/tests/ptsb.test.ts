@@ -80,6 +80,15 @@ describe('readPtsb', () => {
     const files = { ...VALID_FILES, 'chapters/01-uno.md': 'nessun paragrafo' };
     assert.throws(() => readPtsb(pack(files)), /paragrafo/);
   });
+
+  it('with latex: false, opens a book with a bad formula and still rejects a broken one', () => {
+    const badFormula = pack({ ...VALID_FILES, 'chapters/01-uno.md': '## p1 | Primo\n\nTesto con $\\foo$.\n' });
+    assert.throws(() => readPtsb(badFormula), /LaTeX inline invalido/);
+    assert.equal(readPtsb(badFormula, undefined, { latex: false }).config.id, 'demo-book');
+
+    const broken = pack({ ...VALID_FILES, 'chapters/01-uno.md': 'nessun paragrafo' });
+    assert.throws(() => readPtsb(broken, undefined, { latex: false }), /paragrafo/);
+  });
 });
 
 describe('readPtsb config shape', () => {
